@@ -8,6 +8,79 @@ if (empty($_SESSION['is_signed_in']) || empty($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
+
+// AJAX Vehicle Management Handler
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json');
+    $action = $_POST['action'];
+    
+    if ($action === 'toggle_multiple_vehicles') {
+        $status = isset($_POST['status']) && $_POST['status'] === 'true' ? 1 : 0;
+        $stmt = $pdo->prepare("UPDATE users SET has_multiple_vehicles = ? WHERE id = ?");
+        $success = $stmt->execute([$status, $user_id]);
+        echo json_encode(['success' => $success]);
+        exit;
+    }
+    
+    if ($action === 'get_vehicles') {
+        $stmt = $pdo->prepare("SELECT * FROM user_vehicles WHERE user_id = ? ORDER BY id DESC");
+        $stmt->execute([$user_id]);
+        $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['vehicles' => $vehicles]);
+        exit;
+    }
+    
+    if ($action === 'add_vehicle') {
+        $plate = strtoupper(trim($_POST['plate'] ?? ''));
+        $category = trim($_POST['category'] ?? '');
+        if (empty($plate) || empty($category)) {
+            echo json_encode(['success' => false, 'error' => 'Missing fields.']);
+            exit;
+        }
+        $stmt = $pdo->prepare("INSERT INTO user_vehicles (user_id, plate_number, category) VALUES (?, ?, ?)");
+        $success = $stmt->execute([$user_id, $plate, $category]);
+        $vehicle_id = $pdo->lastInsertId();
+
+        // Self-manage multiple vehicles flag
+        $stmt = $pdo->prepare("UPDATE users SET has_multiple_vehicles = 1 WHERE id = ?");
+        $stmt->execute([$user_id]);
+
+        echo json_encode(['success' => $success, 'id' => $vehicle_id, 'plate' => $plate, 'category' => $category]);
+        exit;
+    }
+
+    if ($action === 'edit_vehicle') {
+        $id = intval($_POST['id'] ?? 0);
+        $plate = strtoupper(trim($_POST['plate'] ?? ''));
+        $category = trim($_POST['category'] ?? '');
+        if (empty($plate) || empty($category) || $id <= 0) {
+            echo json_encode(['success' => false, 'error' => 'Missing fields.']);
+            exit;
+        }
+        $stmt = $pdo->prepare("UPDATE user_vehicles SET plate_number = ?, category = ? WHERE id = ? AND user_id = ?");
+        $success = $stmt->execute([$plate, $category, $id, $user_id]);
+        echo json_encode(['success' => $success]);
+        exit;
+    }
+    
+    if ($action === 'delete_vehicle') {
+        $id = intval($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare("DELETE FROM user_vehicles WHERE id = ? AND user_id = ?");
+        $success = $stmt->execute([$id, $user_id]);
+
+        // Self-manage multiple vehicles flag
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM user_vehicles WHERE user_id = ?");
+        $stmt->execute([$user_id]);
+        $count = intval($stmt->fetchColumn());
+        if ($count === 0) {
+            $stmt = $pdo->prepare("UPDATE users SET has_multiple_vehicles = 0 WHERE id = ?");
+            $stmt->execute([$user_id]);
+        }
+
+        echo json_encode(['success' => $success]);
+        exit;
+    }
+}
 date_default_timezone_set('Asia/Manila');
 $current_time = date('H:i:s');
 $current_date = date('Y-m-d');
@@ -317,20 +390,32 @@ function formatTime($timeStr) {
                         <p style="margin: 4px 0 0 0; font-size: 12px; color: #8d8b8b;"><?php echo htmlspecialchars($user['email']); ?></p>
                     </div>
                     
-                    <div class="profile-info">
+                    <div class="profile-info" style="margin-bottom: 0;">
                         <div>
                             <span>Phone Number</span>
                             <strong><?php echo htmlspecialchars($user['phone_number']); ?></strong>
                         </div>
                         <div>
-                            <span>Plate Number</span>
-                            <strong><?php echo htmlspecialchars($user['plate_number']); ?></strong>
+                            <span>Plate Number/s</span>
+                            <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end; text-align: right;" id="sidebar-plates-list">
+                                <strong style="font-family: monospace; font-size: 13px; color: white;"><?php echo htmlspecialchars($user['plate_number']); ?> <span style="font-size: 9px; color: #00d4a8; font-weight: normal; border: 1px solid rgba(0,212,168,0.3); padding: 1px 4px; border-radius: 4px; margin-left: 2px;">DEFAULT</span></strong>
+                                <?php
+                                $stmt_v = $pdo->prepare("SELECT * FROM user_vehicles WHERE user_id = ? ORDER BY id DESC");
+                                $stmt_v->execute([$user_id]);
+                                $sidebar_vehicles = $stmt_v->fetchAll(PDO::FETCH_ASSOC);
+                                foreach ($sidebar_vehicles as $sv) {
+                                    echo '<strong style="font-family: monospace; font-size: 13px; color: white;">' . htmlspecialchars($sv['plate_number']) . ' <span style="font-size: 9px; color: #8d8b8b; font-weight: normal; text-transform: uppercase;">(' . htmlspecialchars($sv['category']) . ')</span></strong>';
+                                }
+                                ?>
+                            </div>
                         </div>
                         <div>
                             <span>Account Created</span>
                             <strong><?php echo date('M d, Y', strtotime($user['created_at'])); ?></strong>
                         </div>
                     </div>
+
+                    <button id="manage-vehicles-btn" class="cancel-booking-btn" style="width: 100%; border-color: rgba(0, 212, 168, 0.3); background: rgba(0, 212, 168, 0.05); color: #00d4a8; margin-top: 16px; font-weight: 500; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Manage Vehicles</button>
                 </aside>
 
                 <section class="dashboard-main">
@@ -409,6 +494,10 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
+                                                <span>Vehicle Plate</span>
+                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                            </div>
+                                            <div>
                                                 <span>Payment Method</span>
                                                 <strong style="text-transform: uppercase;"><?php echo htmlspecialchars($b['payment_method']); ?></strong>
                                             </div>
@@ -471,6 +560,10 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
+                                                <span>Vehicle Plate</span>
+                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                            </div>
+                                            <div>
                                                 <span>Payment Method</span>
                                                 <strong style="text-transform: uppercase;"><?php echo htmlspecialchars($b['payment_method']); ?></strong>
                                             </div>
@@ -528,6 +621,10 @@ function formatTime($timeStr) {
                                             <div>
                                                 <span>Overnight Parking</span>
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
+                                            </div>
+                                            <div>
+                                                <span>Vehicle Plate</span>
+                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
                                             </div>
                                             <div>
                                                 <span>Payment Method</span>
@@ -592,6 +689,10 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
+                                                <span>Vehicle Plate</span>
+                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                            </div>
+                                            <div>
                                                 <span>Payment Method</span>
                                                 <strong style="text-transform: uppercase;"><?php echo htmlspecialchars($b['payment_method']); ?></strong>
                                             </div>
@@ -628,12 +729,52 @@ function formatTime($timeStr) {
                 <div style="display: flex; justify-content: space-between;"><span>Date:</span><strong id="m-date" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Time:</span><strong id="m-time" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Duration:</span><strong id="m-duration" style="color: white;">--</strong></div>
+                <div style="display: flex; justify-content: space-between;"><span>Vehicle Plate:</span><strong id="m-plate" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Overnight Parking:</span><strong id="m-overnight" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Payment Method:</span><strong id="m-payment" style="color: white; text-transform: uppercase;">--</strong></div>
                 <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px; font-size: 14px;"><span style="color: #00d4a8;">Total Price:</span><strong id="m-total" style="color: #00d4a8; font-weight: bold;">--</strong></div>
             </div>
             
             <button onclick="downloadReceiptFromDashboard()" class="download-receipt-btn" style="margin: 0; width: 100%;">Download Text Ticket</button>
+        </div>
+    </div>
+
+    <!-- Modal for managing multiple vehicles -->
+    <div class="receipt-modal" id="vehicles-modal" style="display: none;">
+        <div class="receipt-modal-card" style="max-width: 440px; width: 90%; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+                <h3 style="color: white; margin: 0; font-size: 16px;">Manage Registered Vehicles</h3>
+                <button onclick="closeVehiclesModal()" style="background: transparent; border: none; color: #8d8b8b; font-size: 22px; cursor: pointer;">&times;</button>
+            </div>
+            
+            <div id="modal-vehicle-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; padding-right: 4px; box-sizing: border-box; width: 100%;">
+                <!-- Dynamically loaded via AJAX -->
+            </div>
+            
+            <form id="modal-vehicle-form" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 16px; box-sizing: border-box; width: 100%;">
+                <input type="hidden" id="edit-vehicle-id" value="">
+                <label id="form-action-title" style="font-size: 11px; text-transform: uppercase; color: #8d8b8b; font-weight: bold; margin-bottom: 4px;">Add New Vehicle</label>
+                
+                <input type="text" id="modal-v-plate" placeholder="Plate (e.g. ABC 1234)" style="box-sizing: border-box; width: 100%; background: rgba(8,8,8,0.5); border: 1px solid rgba(255,255,255,0.12); padding: 8px; border-radius: 6px; color: white; font-size: 12px;" required maxlength="10">
+                
+                <select id="modal-v-category" style="box-sizing: border-box; width: 100%; background: rgba(8,8,8,0.5); border: 1px solid rgba(255,255,255,0.12); padding: 8px; border-radius: 6px; color: white; font-size: 12px; cursor: pointer;" required>
+                    <optgroup label="Motorcycles">
+                        <option value="Motorcycle (below 150cc)">Motorcycle (below 150cc)</option>
+                        <option value="Bigbike (Above 400cc)">Bigbike (Above 400cc)</option>
+                    </optgroup>
+                    <optgroup label="Four Wheels">
+                        <option value="4wheels (Sedan)">4wheels (Sedan)</option>
+                        <option value="4wheels (SUV)">4wheels (SUV)</option>
+                        <option value="4wheels (Pickup)">4wheels (Pickup)</option>
+                        <option value="4wheels (Mid-size SUV)">4wheels (Mid-size SUV)</option>
+                    </optgroup>
+                </select>
+                
+                <div style="display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
+                    <button type="submit" id="vehicle-form-submit-btn" style="flex: 2; background: #00d4a8; border: none; color: black; font-weight: bold; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 12px;">+ Add Vehicle</button>
+                    <button type="button" id="cancel-edit-btn" style="display: none; flex: 1; background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #8d8b8b; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 12px;">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -666,6 +807,7 @@ function formatTime($timeStr) {
             document.getElementById('m-date').textContent = new Date(booking.booking_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
             document.getElementById('m-time').textContent = formattedTime;
             document.getElementById('m-duration').textContent = booking.duration_hours + (booking.duration_hours > 1 ? ' hours' : ' hour');
+            document.getElementById('m-plate').textContent = booking.plate_number || 'Default';
             document.getElementById('m-overnight').textContent = Number(booking.is_overnight) === 1 ? 'Yes' : 'No';
             document.getElementById('m-payment').textContent = booking.payment_method;
             document.getElementById('m-total').textContent = 'PHP ' + Number(booking.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2});
@@ -686,9 +828,10 @@ function formatTime($timeStr) {
             const parts = timeStr.split(':');
             let hours = Number(parts[0]);
             const minutes = parts[1] || '00';
-            const period = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12 || 12;
-            return hours + ':' + minutes + ' ' + period;
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            return hours + ':' + minutes + ' ' + ampm;
         }
 
         function downloadReceiptFromDashboard() {
@@ -704,6 +847,7 @@ function formatTime($timeStr) {
                 'Floor & Spot: ' + b.floor + ' - ' + b.spot_label,
                 'Arrival: ' + formatJsTime(b.arrival_time),
                 'Duration: ' + b.duration_hours + ' hours',
+                'Vehicle Plate: ' + (b.plate_number || 'Default'),
                 'Overnight Parking: ' + (Number(b.is_overnight) === 1 ? 'Yes' : 'No'),
                 'Payment Method: ' + b.payment_method.toUpperCase(),
                 'Total Price: PHP ' + Number(b.total_amount).toLocaleString('en-US'),
@@ -747,6 +891,167 @@ function formatTime($timeStr) {
             } catch (e) {
                 console.error("Cancellation error:", e);
                 alert('An error occurred during cancellation.');
+            }
+        }
+
+        // --- Vehicle Management Scripts ---
+        const manageVehiclesBtn = document.getElementById('manage-vehicles-btn');
+        const vehiclesModal = document.getElementById('vehicles-modal');
+        const modalVehicleList = document.getElementById('modal-vehicle-list');
+        const modalVehicleForm = document.getElementById('modal-vehicle-form');
+        const editVehicleIdInput = document.getElementById('edit-vehicle-id');
+        const formActionTitle = document.getElementById('form-action-title');
+        const modalVPlateInput = document.getElementById('modal-v-plate');
+        const modalVCategorySelect = document.getElementById('modal-v-category');
+        const submitBtn = document.getElementById('vehicle-form-submit-btn');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+
+        if (manageVehiclesBtn) {
+            manageVehiclesBtn.addEventListener('click', function() {
+                if (vehiclesModal) {
+                    vehiclesModal.style.display = 'flex';
+                    resetVehicleForm();
+                    loadVehiclesList();
+                }
+            });
+        }
+
+        function closeVehiclesModal() {
+            if (vehiclesModal) {
+                vehiclesModal.style.display = 'none';
+            }
+        }
+
+        function resetVehicleForm() {
+            if (editVehicleIdInput) editVehicleIdInput.value = '';
+            if (modalVPlateInput) modalVPlateInput.value = '';
+            if (modalVCategorySelect) modalVCategorySelect.selectedIndex = 0;
+            if (formActionTitle) formActionTitle.textContent = 'Add New Vehicle';
+            if (submitBtn) submitBtn.textContent = '+ Add Vehicle';
+            if (cancelEditBtn) cancelEditBtn.style.display = 'none';
+        }
+
+        if (cancelEditBtn) {
+            cancelEditBtn.addEventListener('click', resetVehicleForm);
+        }
+
+        async function loadVehiclesList() {
+            if (!modalVehicleList) return;
+            modalVehicleList.innerHTML = '<div style="color: #8d8b8b; font-size: 12px; text-align: center; padding: 10px;">Loading...</div>';
+            
+            try {
+                const fd = new FormData();
+                fd.append('action', 'get_vehicles');
+                const response = await fetch('dashboard.php', { method: 'POST', body: fd });
+                if (response.ok) {
+                    const data = await response.json();
+                    renderVehicles(data.vehicles || []);
+                    updateSidebarPlates(data.vehicles || []);
+                }
+            } catch(e) {
+                console.error("Error loading vehicles:", e);
+                modalVehicleList.innerHTML = '<div style="color: #ff4d4d; font-size: 11px; text-align: center;">Error loading vehicles.</div>';
+            }
+        }
+
+        function updateSidebarPlates(vehicles) {
+            const sidebarList = document.getElementById('sidebar-plates-list');
+            if (!sidebarList) return;
+            
+            const defaultPlate = "<?php echo htmlspecialchars($user['plate_number']); ?>";
+            let html = `<strong style="font-family: monospace; font-size: 13px; color: white;">${defaultPlate} <span style="font-size: 9px; color: #00d4a8; font-weight: normal; border: 1px solid rgba(0,212,168,0.3); padding: 1px 4px; border-radius: 4px; margin-left: 2px;">DEFAULT</span></strong>`;
+            
+            vehicles.forEach(v => {
+                html += `<strong style="font-family: monospace; font-size: 13px; color: white;">${v.plate_number} <span style="font-size: 9px; color: #8d8b8b; font-weight: normal; text-transform: uppercase;">(${v.category})</span></strong>`;
+            });
+            sidebarList.innerHTML = html;
+        }
+
+        function renderVehicles(vehicles) {
+            if (!modalVehicleList) return;
+            if (vehicles.length === 0) {
+                modalVehicleList.innerHTML = '<div style="color: #555; font-size: 11px; text-align: center; padding: 10px; border: 1px dashed rgba(255,255,255,0.06); border-radius: 6px;">No vehicles added yet.</div>';
+                return;
+            }
+
+            modalVehicleList.innerHTML = vehicles.map(v => `
+                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); padding: 8px; border-radius: 6px; box-sizing: border-box; width: 100%;">
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="color: white; font-weight: bold; font-size: 12px; font-family: monospace; letter-spacing: 0.5px;">${v.plate_number}</span>
+                        <span style="color: #8d8b8b; font-size: 10px; text-transform: uppercase;">${v.category}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="startEditVehicle(${v.id}, '${v.plate_number}', '${v.category}')" style="background: transparent; border: none; color: #00d4a8; font-weight: bold; font-size: 11px; cursor: pointer; padding: 2px 4px;">Edit</button>
+                        <button onclick="deleteVehicle(${v.id})" style="background: transparent; border: none; color: #ff4d4d; font-weight: bold; font-size: 14px; cursor: pointer; padding: 0 4px;">&times;</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function startEditVehicle(id, plate, category) {
+            if (editVehicleIdInput) editVehicleIdInput.value = id;
+            if (modalVPlateInput) modalVPlateInput.value = plate;
+            if (modalVCategorySelect) modalVCategorySelect.value = category;
+            if (formActionTitle) formActionTitle.textContent = 'Edit Vehicle Details';
+            if (submitBtn) submitBtn.textContent = 'Update Vehicle';
+            if (cancelEditBtn) cancelEditBtn.style.display = 'block';
+        }
+
+        if (modalVehicleForm) {
+            modalVehicleForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const editId = editVehicleIdInput.value;
+                const plate = modalVPlateInput.value;
+                const category = modalVCategorySelect.value;
+                
+                const originalSubmitText = submitBtn.textContent;
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Saving...';
+                
+                try {
+                    const fd = new FormData();
+                    if (editId) {
+                        fd.append('action', 'edit_vehicle');
+                        fd.append('id', editId);
+                    } else {
+                        fd.append('action', 'add_vehicle');
+                    }
+                    fd.append('plate', plate);
+                    fd.append('category', category);
+                    
+                    const response = await fetch('dashboard.php', { method: 'POST', body: fd });
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success) {
+                            resetVehicleForm();
+                            loadVehiclesList();
+                        } else {
+                            alert('Error: ' + result.error);
+                        }
+                    }
+                } catch(err) {
+                    console.error("Error saving vehicle:", err);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalSubmitText;
+                }
+            });
+        }
+
+        async function deleteVehicle(id) {
+            if (!confirm('Are you sure you want to remove this vehicle?')) return;
+            
+            try {
+                const fd = new FormData();
+                fd.append('action', 'delete_vehicle');
+                fd.append('id', id);
+                const response = await fetch('dashboard.php', { method: 'POST', body: fd });
+                if (response.ok) {
+                    resetVehicleForm();
+                    loadVehiclesList();
+                }
+            } catch(e) {
+                console.error("Error deleting vehicle:", e);
             }
         }
     </script>

@@ -69,6 +69,25 @@ try {
     if (!in_array('is_overnight', $columns)) {
         $pdo->exec("ALTER TABLE `bookings` ADD COLUMN `is_overnight` TINYINT(1) DEFAULT 0 AFTER `payment_status`");
     }
+    if (!in_array('plate_number', $columns)) {
+        $pdo->exec("ALTER TABLE `bookings` ADD COLUMN `plate_number` VARCHAR(15) NULL AFTER `user_id`");
+        $pdo->exec("UPDATE `bookings` b JOIN `users` u ON b.user_id = u.id SET b.plate_number = u.plate_number WHERE b.plate_number IS NULL");
+    }
+
+    // 2. Users table migrations
+    $user_cols = $pdo->query("DESCRIBE `users`")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('has_multiple_vehicles', $user_cols)) {
+        $pdo->exec("ALTER TABLE `users` ADD COLUMN `has_multiple_vehicles` TINYINT(1) DEFAULT 0 AFTER `plate_number`");
+    }
+
+    // 3. Create user_vehicles table
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `user_vehicles` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `user_id` INT NOT NULL,
+        `plate_number` VARCHAR(15) NOT NULL,
+        `category` VARCHAR(50) NOT NULL,
+        FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
 } catch (\PDOException $e) {
     die("Database connection failed: " . $e->getMessage());

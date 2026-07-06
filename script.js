@@ -344,6 +344,7 @@ document.addEventListener('DOMContentLoaded', function () {
         spot: document.querySelector('[data-receipt-field="spot"]'),
         arrival: document.querySelector('[data-receipt-field="arrival"]'),
         duration: document.querySelector('[data-receipt-field="duration"]'),
+        plate: document.querySelector('[data-receipt-field="plate"]'),
         overnight: document.querySelector('[data-receipt-field="overnight"]'),
         payment: document.querySelector('[data-receipt-field="payment"]'),
         total: document.querySelector('[data-receipt-field="total"]')
@@ -469,6 +470,10 @@ document.addEventListener('DOMContentLoaded', function () {
                             <strong>${b.duration_hours} ${b.duration_hours > 1 ? 'hours' : 'hour'}</strong>
                         </div>
                         <div>
+                            <span>Vehicle Plate</span>
+                            <strong>${b.plate_number || 'Default'}</strong>
+                        </div>
+                        <div>
                             <span>Payment Method</span>
                             <strong style="text-transform: uppercase;">${b.payment_method}</strong>
                         </div>
@@ -573,6 +578,15 @@ document.addEventListener('DOMContentLoaded', function () {
     async function requestReceiptDetails(paymentMethod) {
         const endpoint = receiptEndpoint ? receiptEndpoint.getAttribute('data-receipt-endpoint') : 'book.php';
 
+        const vehicleSelect = document.getElementById('booking-vehicle');
+        const vehicleLabel = document.getElementById('booking-vehicle-label');
+        let chosenPlate = '';
+        if (vehicleSelect) {
+            chosenPlate = vehicleSelect.value;
+        } else if (vehicleLabel) {
+            chosenPlate = vehicleLabel.getAttribute('data-vehicle-plate') || '';
+        }
+
         const params = new URLSearchParams();
         params.append('action', 'confirm_booking');
         params.append('location_id', selectedLocation.id);
@@ -586,6 +600,7 @@ document.addEventListener('DOMContentLoaded', function () {
         params.append('payment_method', paymentMethod);
         params.append('total_amount', getBookingTotal());
         params.append('is_overnight', overnightCheckbox && overnightCheckbox.checked ? 'true' : 'false');
+        params.append('plate_number', chosenPlate);
 
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -626,6 +641,7 @@ document.addEventListener('DOMContentLoaded', function () {
             spot: selectedSpot.label + ' (' + getSpotTypeLabel(selectedSpot.type) + ')',
             arrival: formatArrivalTime(arrivalInput.value),
             duration: getDurationLabel(),
+            plate: receiptDetails.plate_number || '',
             overnight: isOvernight ? 'Yes' : 'No',
             rate: isOvernight ? (parseInt(arrivalInput.value.split(':')[0]) >= 12 ? 'PHP 120 (PM)' : 'PHP 145 (AM)') : 'PHP 50 (First 4h) + PHP 15/hr',
             payment: receiptDetails.payment_method || 'GCash',
@@ -639,6 +655,7 @@ document.addEventListener('DOMContentLoaded', function () {
         receiptFields.spot.textContent = activeReceipt.spot;
         receiptFields.arrival.textContent = activeReceipt.arrival;
         receiptFields.duration.textContent = activeReceipt.duration;
+        if (receiptFields.plate) receiptFields.plate.textContent = activeReceipt.plate;
         if (receiptFields.overnight) receiptFields.overnight.textContent = activeReceipt.overnight;
         if (receiptFields.payment) receiptFields.payment.textContent = activeReceipt.payment;
         receiptFields.total.textContent = activeReceipt.total;
@@ -667,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'Spot: ' + activeReceipt.spot,
             'Arrival: ' + activeReceipt.arrival,
             'Duration: ' + activeReceipt.duration,
+            'Vehicle Plate: ' + activeReceipt.plate,
             'Overnight Parking: ' + activeReceipt.overnight,
             'Rate Model: ' + activeReceipt.rate,
             'Payment Method: ' + activeReceipt.payment.toUpperCase(),

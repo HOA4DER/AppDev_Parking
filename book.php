@@ -71,10 +71,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     $hourly_rate = floatval($_POST['hourly_rate'] ?? 0);
     $payment_method = $_POST['payment_method'] ?? 'gcash';
     $is_overnight = isset($_POST['is_overnight']) && ($_POST['is_overnight'] === 'true' || $_POST['is_overnight'] === '1' || $_POST['is_overnight'] === 1);
+    $plate_number = strtoupper(trim($_POST['plate_number'] ?? ''));
 
     if (empty($location_id) || empty($floor) || empty($spot_label) || empty($arrival_time)) {
         echo json_encode(['error' => 'Missing booking details.']);
         exit;
+    }
+
+    if (empty($plate_number)) {
+        $stmt = $pdo->prepare("SELECT plate_number FROM users WHERE id = ?");
+        $stmt->execute([$user_id]);
+        $user_row = $stmt->fetch();
+        $plate_number = $user_row['plate_number'] ?? '';
     }
 
     // Backend price verification
@@ -140,8 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
 
         // Insert booking
         $stmt = $pdo->prepare("
-            INSERT INTO bookings (user_id, booking_date, receipt_number, location_id, location_name, floor, spot_label, spot_type, arrival_time, duration_hours, hourly_rate, payment_method, total_amount, is_overnight) 
-            VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO bookings (user_id, booking_date, receipt_number, location_id, location_name, floor, spot_label, spot_type, arrival_time, duration_hours, hourly_rate, payment_method, total_amount, is_overnight, plate_number) 
+            VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $user_id,
@@ -156,13 +164,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
             $hourly_rate,
             $payment_method,
             $total_amount,
-            $is_overnight ? 1 : 0
+            $is_overnight ? 1 : 0,
+            $plate_number
         ]);
 
         echo json_encode([
             'receipt_number' => $receipt_number,
             'issued_at' => $issued_at,
-            'payment_method' => $payment_method
+            'payment_method' => $payment_method,
+            'plate_number' => $plate_number
         ]);
     } catch (Exception $e) {
         echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
@@ -194,6 +204,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
+}
+
+// 4. Fetch user details & vehicles
+$user_id = $_SESSION['user_id'];
+$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$user = $stmt->fetch();
+
+$user_vehicles = [];
+if ($user) {
+    $stmt = $pdo->prepare("SELECT * FROM user_vehicles WHERE user_id = ? ORDER BY id DESC");
+    $stmt->execute([$user_id]);
+    $user_vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
 <!DOCTYPE html>
@@ -380,6 +403,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
                         <div><span>Floor</span><strong data-summary="floor">Not selected</strong></div>
                         <div><span>Spot</span><strong data-summary="spot">Not selected</strong></div>
                         <div><span>Hourly Rate</span><strong data-summary="rate">--</strong></div>
+                        <div>
+                            <span>Vehicle to Use</span>
+                            <?php if (!empty($user_vehicles)): ?>
+                                <select class="summary-input" id="booking-vehicle" style="cursor: pointer;">
+                                    <option value="<?php echo htmlspecialchars($user['plate_number']); ?>"><?php echo htmlspecialchars($user['plate_number']); ?> (Default)</option>
+                                    <?php foreach ($user_vehicles as $v): ?>
+                                        <option value="<?php echo htmlspecialchars($v['plate_number']); ?>"><?php echo htmlspecialchars($v['plate_number']); ?> (<?php echo htmlspecialchars($v['category']); ?>)</option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else: ?>
+                                <strong id="booking-vehicle-label" data-vehicle-plate="<?php echo htmlspecialchars($user['plate_number'] ?? ''); ?>"><?php echo htmlspecialchars($user['plate_number'] ?? '--'); ?></strong>
+                            <?php endif; ?>
+                        </div>
                         <div><span>Arrival Time</span><input class="summary-input" type="time" value="09:00" data-arrival-time></div>
                         <div><span>Duration</span><select class="summary-input" data-duration>
                             <option value="1">1 hour</option>
@@ -428,6 +464,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
                                 <div><span>Spot</span><strong data-receipt-field="spot">--</strong></div>
                                 <div><span>Arrival</span><strong data-receipt-field="arrival">--</strong></div>
                                 <div><span>Duration</span><strong data-receipt-field="duration">--</strong></div>
+                                <div><span>Vehicle Plate</span><strong data-receipt-field="plate">--</strong></div>
                                 <div><span>Overnight Parking</span><strong data-receipt-field="overnight">--</strong></div>
                                 <div><span>Payment Method</span><strong data-receipt-field="payment" style="text-transform: uppercase;">--</strong></div>
                                 <div><span>Total</span><strong data-receipt-field="total">--</strong></div>
