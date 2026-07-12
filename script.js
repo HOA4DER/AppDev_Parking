@@ -1,4 +1,3 @@
-// AJAX Auth Handler
 document.addEventListener('submit', async function (e) {
     if (e.target && e.target.classList.contains('form-container')) {
         e.preventDefault();
@@ -94,6 +93,17 @@ function createAcc() {
 
                     <span class="login-email-text">PLATE NUMBER</span>
                     <input class="email-input-bar" type="text" name="plate_number" maxlength="15" placeholder="ABC 1234" required>
+
+                    <label class="login-email-text" for="vehicle-category">VEHICLE TYPE</label>
+                    <select class="email-input-bar vehicle-type-select" id="vehicle-category" name="vehicle_category" required>
+                        <option value="" selected disabled>Select your vehicle type</option>
+                        <option value="Motorcycle (below 150cc)">Motorcycle (below 150cc)</option>
+                        <option value="Bigbike (Above 400cc)">Bigbike (Above 400cc)</option>
+                        <option value="4wheels (Sedan)">4 wheels (Sedan)</option>
+                        <option value="4wheels (SUV)">4 wheels (SUV)</option>
+                        <option value="4wheels (Pickup)">4 wheels (Pickup)</option>
+                        <option value="4wheels (Mid-size SUV)">4 wheels (Mid-size SUV)</option>
+                    </select>
 
                     <span class="login-email-text">EMAIL</span>
                     <input class="email-input-bar" type="email" name="email" placeholder="you@example.com" required>
@@ -388,7 +398,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let occupiedSpotsFromDb = [];
 
-    // Checkout Modal Selectors
     const checkoutModal = document.getElementById('checkout-modal');
     const closeCheckoutBtn = document.getElementById('close-checkout-btn');
     const cancelCheckoutBtn = document.getElementById('cancel-checkout-btn');
@@ -548,13 +557,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const isPM = hours >= 12;
             const basePrice = isPM ? 120 : 145;
 
-            // Compute departure time assuming today's arrival
             const arrivalDate = new Date();
             arrivalDate.setHours(hours, parseInt(timeParts[1] || '0', 10), 0, 0);
 
             const departureDate = new Date(arrivalDate.getTime() + durationHours * 3600 * 1000);
 
-            // Next morning 7 AM
             const next7am = new Date(arrivalDate.getTime());
             next7am.setDate(next7am.getDate() + 1);
             next7am.setHours(7, 0, 0, 0);
@@ -568,7 +575,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
             return basePrice + extraCost;
         } else {
-            // Standard flat rate: first 4 hours is 50, then 15 pesos for each extra hour
             if (durationHours <= 4) {
                 return 50;
             } else {
@@ -680,7 +686,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (receiptFields.payment) receiptFields.payment.textContent = activeReceipt.payment;
         receiptFields.total.textContent = activeReceipt.total;
 
-        // Generate dynamic scanable ticket QR Code
         if (receiptQrImg) {
             receiptQrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=' + encodeURIComponent('SiksikParkingTicket_' + activeReceipt.number);
         }
@@ -957,7 +962,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // --- Checkout & Payment Logic ---
     function switchPaymentScreen(method) {
         const screens = {
             qr: document.getElementById('screen-qr'),
@@ -1015,13 +1019,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (closeCheckoutBtn) closeCheckoutBtn.addEventListener('click', closeCheckout);
     if (cancelCheckoutBtn) cancelCheckoutBtn.addEventListener('click', closeCheckout);
 
-    // Confirm click triggers Payment Modal instead of immediate submission
     confirmButton.addEventListener('click', function () {
         if (!selectedLocation || !selectedFloor || !selectedSpot) {
             return;
         }
 
-        // Populate Summary
         const payLoc = document.getElementById('pay-location');
         const paySpot = document.getElementById('pay-spot');
         const payArr = document.getElementById('pay-arrival');
@@ -1034,7 +1036,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (payDur) payDur.textContent = getDurationLabel();
         if (payTot) payTot.textContent = formatCurrency(getBookingTotal());
 
-        // Reset radio button to default (GCash)
         const gcashRadio = document.querySelector('input[name="payment_method_sel"][value="gcash"]');
         if (gcashRadio) {
             gcashRadio.checked = true;
@@ -1069,7 +1070,6 @@ document.addEventListener('DOMContentLoaded', function () {
             paySubmitBtn.disabled = true;
             paySubmitBtn.textContent = selectedMethod === 'cash' ? 'Confirming...' : 'Verifying...';
 
-            // Simulate processing latency
             setTimeout(async function () {
                 try {
                     const receiptDetails = await requestReceiptDetails(selectedMethod);
@@ -1173,12 +1173,8 @@ document.addEventListener('DOMContentLoaded', function () {
     updateSummary();
 });
 
-// ==========================================
-// COOKIE CONSENT SYSTEM
-// ==========================================
 
 document.addEventListener('DOMContentLoaded', function () {
-    // Cookie Helper Functions
     function setCookie(name, value, days) {
         let expires = "";
         if (days) {
@@ -1200,7 +1196,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return null;
     }
 
-    // Inject Cookie Banner HTML
     function injectCookieBanner() {
         if (document.getElementById('siksik-cookie-banner')) return;
 
@@ -1330,7 +1325,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // Action Handlers
         acceptBtn.addEventListener('click', function () {
             const preferences = {
                 necessary: true,

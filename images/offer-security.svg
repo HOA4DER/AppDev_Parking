@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-label="Verified locations">
+  <path d="M36 8 58 17v17c0 14-9 24-22 30-13-6-22-16-22-30V17L36 8z" fill="#0f1518" stroke="#1f3d38" stroke-width="2"/>
+  <path d="m25 36 8 8 16-18" fill="none" stroke="#00d4a8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M36 8v55" fill="none" stroke="#00d4a8" stroke-width="2" stroke-opacity=".28"/>
+</svg>

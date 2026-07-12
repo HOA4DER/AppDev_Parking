@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-label="Real time availability">
+  <circle cx="36" cy="36" r="25" fill="#0f1518" stroke="#1f3d38" stroke-width="2"/>
+  <circle cx="36" cy="36" r="6" fill="#00d4a8"/>
+  <path d="M36 16v8M36 48v8M16 36h8M48 36h8" fill="none" stroke="#00d4a8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M24 24c6-5 18-5 24 0M24 48c6 5 18 5 24 0" fill="none" stroke="#e2e6ed" stroke-width="3" stroke-linecap="round"/>
+</svg>

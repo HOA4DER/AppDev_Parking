@@ -295,6 +295,15 @@ body {
     box-shadow: 0 0 0 3px rgba(0, 212, 168, 0.12);
 }
 
+.vehicle-type-select {
+    color: #8d8d8d;
+    cursor: pointer;
+}
+
+.vehicle-type-select:valid {
+    color: #ffffff;
+}
+
 .signIn-btn {
     width: 100%;
     padding: 13px 20px;
@@ -520,7 +529,6 @@ body {
     height: 8px;
     border-radius: 50%;
     background-color: #0c9b0c;
-    /* solid green */
     box-shadow: 0 0 10px #0ca50c;
     animation: pulse 1.5s infinite;
 }
@@ -1793,7 +1801,6 @@ body {
     }
 }
 
-/* Booking History & Auth Dashboard Styles */
 .booking-history-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -1905,7 +1912,6 @@ body {
     color: white;
 }
 
-/* Auth premium alert styles */
 .auth-error-msg {
     color: #ff4d4d;
     font-size: 13px;
@@ -1924,7 +1930,6 @@ body {
     background: rgba(0, 212, 168, 0.06);
 }
 
-/* Checkout modal styling */
 .checkout-modal-backdrop {
     position: fixed;
     top: 0;
@@ -1961,7 +1966,6 @@ body {
     }
 }
 
-/* Dashboard */
 .dashboard-grid {
     display: grid;
     grid-template-columns: 280px 1fr;
@@ -2148,10 +2152,6 @@ body {
     }
 }
 
-/* ==========================================
-   COOKIE CONSENT SYSTEM STYLES
-   ========================================== */
-
 .cookie-banner-container {
     position: fixed;
     bottom: 24px;
@@ -2318,7 +2318,6 @@ body {
     padding-right: 6px;
 }
 
-/* Custom Scrollbar for option list */
 .cookie-option-list::-webkit-scrollbar {
     width: 6px;
 }
@@ -2379,7 +2378,6 @@ body {
     color: #6c6c6c;
 }
 
-/* Toggle Switch Styling */
 .cookie-switch {
     position: relative;
     display: inline-block;
@@ -2439,7 +2437,6 @@ body {
     background-color: #00d4a8;
 }
 
-/* Floating Settings FAB Trigger */
 .cookie-trigger-fab {
     position: fixed;
     bottom: 24px;
@@ -2467,7 +2464,6 @@ body {
     box-shadow: 0 0 15px rgba(0, 212, 168, 0.3);
 }
 
-/* Responsive adjustments */
 @media (max-width: 576px) {
     .cookie-banner-container {
         bottom: 0;

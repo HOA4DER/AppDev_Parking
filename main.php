@@ -2,6 +2,15 @@
 session_start();
 require_once 'db.php';
 
+$vehicleCategories = [
+    'Motorcycle (below 150cc)',
+    'Bigbike (Above 400cc)',
+    '4wheels (Sedan)',
+    '4wheels (SUV)',
+    '4wheels (Pickup)',
+    '4wheels (Mid-size SUV)'
+];
+
 $authFlash = $_SESSION['auth_flash'] ?? null;
 unset($_SESSION['auth_flash']);
 
@@ -73,11 +82,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $last_name = trim($_POST['last_name'] ?? '');
         $phone_number = trim($_POST['phone_number'] ?? '');
         $plate_number = trim($_POST['plate_number'] ?? '');
+        $vehicle_category = trim($_POST['vehicle_category'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $password = trim($_POST['password'] ?? '');
 
-        if (empty($first_name) || empty($last_name) || empty($phone_number) || empty($plate_number) || empty($email) || empty($password)) {
+        if (empty($first_name) || empty($last_name) || empty($phone_number) || empty($plate_number) || empty($vehicle_category) || empty($email) || empty($password)) {
             authRespond(false, 'All fields are required.');
+        }
+
+        if (!in_array($vehicle_category, $vehicleCategories, true)) {
+            authRespond(false, 'Please choose a valid vehicle type.');
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -100,8 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, phone_number, plate_number, email, password) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$first_name, $last_name, $phone_number, $plate_number, $email, $hashedPassword]);
+            $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, phone_number, plate_number, default_vehicle_category, email, password) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$first_name, $last_name, $phone_number, $plate_number, $vehicle_category, $email, $hashedPassword]);
 
             $isAjaxRequest = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
             if ($isAjaxRequest) {
@@ -113,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['last_name'] = $last_name;
                 $_SESSION['phone_number'] = $phone_number;
                 $_SESSION['plate_number'] = $plate_number;
+                $_SESSION['default_vehicle_category'] = $vehicle_category;
             }
 
             authRespond(true, $isAjaxRequest ? 'Account created successfully! Redirecting...' : 'Account created successfully. Please sign in.', $isAjaxRequest ? 'index.php' : 'main.php');
@@ -129,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="style.css">
     <title>Parking System</title>
-    <script src="script.js?v=20260710-auth" defer></script>
+    <script src="script.js?v=20260712-vehicle-type" defer></script>
 </head>
 <body>
     <section class="auth-page-section">

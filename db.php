@@ -12,17 +12,12 @@ $options = [
 ];
 
 try {
-    // Connect to MySQL server first without selecting DB
     $pdo = new PDO("mysql:host=$host;charset=$charset", $user, $pass, $options);
     
-    // Create database if not exists
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     
-    // Use the database
     $pdo->exec("USE `$db`");
     
-    // Create tables
-    // Users table
     $pdo->exec("CREATE TABLE IF NOT EXISTS `users` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `first_name` VARCHAR(50) NOT NULL,
@@ -34,7 +29,6 @@ try {
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // Bookings table
     $pdo->exec("CREATE TABLE IF NOT EXISTS `bookings` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `user_id` INT NOT NULL,
@@ -53,7 +47,6 @@ try {
         FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // Dynamic database migrations
     $columns = $pdo->query("DESCRIBE `bookings`")->fetchAll(PDO::FETCH_COLUMN);
     if (!in_array('booking_date', $columns)) {
         $pdo->exec("ALTER TABLE `bookings` ADD COLUMN `booking_date` DATE NULL AFTER `user_id`");
@@ -78,7 +71,6 @@ try {
         $pdo->exec("UPDATE `bookings` b JOIN `users` u ON b.user_id = u.id SET b.vehicle_category = COALESCE(u.default_vehicle_category, '4wheels (Sedan)') WHERE b.vehicle_category IS NULL");
     }
 
-    // 2. Users table migrations
     $user_cols = $pdo->query("DESCRIBE `users`")->fetchAll(PDO::FETCH_COLUMN);
     if (!in_array('has_multiple_vehicles', $user_cols)) {
         $pdo->exec("ALTER TABLE `users` ADD COLUMN `has_multiple_vehicles` TINYINT(1) DEFAULT 0 AFTER `plate_number`");
@@ -94,7 +86,6 @@ try {
         $pdo->exec("ALTER TABLE `users` MODIFY COLUMN `plate_number` VARCHAR(15) NOT NULL");
     }
 
-    // 3. Create user_vehicles table
     $pdo->exec("CREATE TABLE IF NOT EXISTS `user_vehicles` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `user_id` INT NOT NULL,

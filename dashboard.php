@@ -278,7 +278,6 @@ function formatTime($timeStr) {
                         <button class="tab-btn" onclick="switchDashboardTab(event, 'tab-cancelled')">Cancelled (<?php echo count($cancelled_bookings); ?>)</button>
                     </div>
 
-                    <!-- ACTIVE RESERVATIONS PANEL -->
                     <div class="tab-content-panel active" id="tab-active">
                         <?php if (empty($active_bookings)): ?>
                             <div class="empty-dashboard-state">
@@ -345,7 +344,6 @@ function formatTime($timeStr) {
                         <?php endif; ?>
                     </div>
 
-                    <!-- COMPLETED RESERVATIONS PANEL -->
                     <div class="tab-content-panel" id="tab-completed">
                         <?php if (empty($completed_bookings)): ?>
                             <div class="empty-dashboard-state">
@@ -408,7 +406,6 @@ function formatTime($timeStr) {
                         <?php endif; ?>
                     </div>
 
-                    <!-- VOID RESERVATIONS PANEL -->
                     <div class="tab-content-panel" id="tab-void">
                         <?php if (empty($void_bookings)): ?>
                             <div class="empty-dashboard-state">
@@ -474,7 +471,6 @@ function formatTime($timeStr) {
                         <?php endif; ?>
                     </div>
 
-                    <!-- CANCELLED RESERVATIONS PANEL -->
                     <div class="tab-content-panel" id="tab-cancelled">
                         <?php if (empty($cancelled_bookings)): ?>
                             <div class="empty-dashboard-state">
@@ -540,7 +536,6 @@ function formatTime($timeStr) {
         </main>
     </section>
 
-    <!-- Modal for viewing receipt -->
     <div class="receipt-modal" id="dashboard-receipt-modal" style="display: none;">
         <div class="receipt-modal-card">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
@@ -569,7 +564,6 @@ function formatTime($timeStr) {
         </div>
     </div>
 
-    <!-- Modal for managing multiple vehicles -->
     <div class="receipt-modal" id="vehicles-modal" style="display: none;">
         <div class="receipt-modal-card" style="max-width: 440px; width: 90%; display: flex; flex-direction: column; gap: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
@@ -578,7 +572,6 @@ function formatTime($timeStr) {
             </div>
             
             <div id="modal-vehicle-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; padding-right: 4px; box-sizing: border-box; width: 100%;">
-                <!-- Dynamically loaded via AJAX -->
             </div>
             
             <form id="modal-vehicle-form" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 16px; box-sizing: border-box; width: 100%;">
@@ -610,15 +603,12 @@ function formatTime($timeStr) {
 
     <script>
         function switchDashboardTab(event, tabId) {
-            // Hide all panels
             const panels = document.querySelectorAll('.tab-content-panel');
             panels.forEach(p => p.classList.remove('active'));
             
-            // Deactivate all tab buttons
             const tabs = document.querySelectorAll('.tab-btn');
             tabs.forEach(t => t.classList.remove('active'));
             
-            // Show selected panel & activate button
             document.getElementById(tabId).classList.add('active');
             event.currentTarget.classList.add('active');
         }
@@ -628,7 +618,6 @@ function formatTime($timeStr) {
         function viewReceiptFromDashboard(booking) {
             activeReceiptData = booking;
             
-            // Format time
             const formattedTime = formatJsTime(booking.arrival_time);
             
             document.getElementById('m-receipt').textContent = booking.receipt_number;
@@ -643,7 +632,6 @@ function formatTime($timeStr) {
             document.getElementById('m-payment').textContent = booking.payment_method;
             document.getElementById('m-total').textContent = 'PHP ' + Number(booking.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2});
             
-            // Fetch dynamic QR code
             const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent('SiksikParkingTicket_' + booking.receipt_number);
             document.getElementById('dashboard-qr-img').src = qrUrl;
 
@@ -661,7 +649,7 @@ function formatTime($timeStr) {
             const minutes = parts[1] || '00';
             const ampm = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12;
-            hours = hours ? hours : 12; // the hour '0' should be '12'
+            hours = hours ? hours : 12;
             return hours + ':' + minutes + ' ' + ampm;
         }
 
@@ -726,7 +714,6 @@ function formatTime($timeStr) {
             }
         }
 
-        // --- Vehicle Management Scripts ---
         const manageVehiclesBtn = document.getElementById('manage-vehicles-btn');
         const vehiclesModal = document.getElementById('vehicles-modal');
         const modalVehicleList = document.getElementById('modal-vehicle-list');
