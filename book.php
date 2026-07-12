@@ -14,7 +14,6 @@ if (empty($_SESSION['is_signed_in'])) {
 
 date_default_timezone_set('Asia/Manila');
 
-// 1. Handle API Action to Get Occupied Spots
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'get_occupied_spots') {
     header('Content-Type: application/json');
     $location_id = $_GET['location_id'] ?? '';
@@ -51,7 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'get_occ
     exit;
 }
 
-// 2. Handle API Action to Confirm Booking
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confirm_booking') {
     header('Content-Type: application/json');
     
@@ -69,9 +67,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     $arrival_time = $_POST['arrival_time'] ?? '';
     $duration = intval($_POST['duration'] ?? 2);
     $hourly_rate = floatval($_POST['hourly_rate'] ?? 0);
-    $payment_method = $_POST['payment_method'] ?? 'gcash';
+    $payment_method = strtolower(trim($_POST['payment_method'] ?? 'gcash'));
+    $allowed_payment_methods = ['gcash', 'maya', 'paypal', 'card', 'cash'];
+    if (!in_array($payment_method, $allowed_payment_methods, true)) {
+        $payment_method = 'gcash';
+    }
+    $payment_status = $payment_method === 'cash' ? 'pending' : 'paid';
     $is_overnight = isset($_POST['is_overnight']) && ($_POST['is_overnight'] === 'true' || $_POST['is_overnight'] === '1' || $_POST['is_overnight'] === 1);
     $plate_number = strtoupper(trim($_POST['plate_number'] ?? ''));
+    $vehicle_category = '';
 
     if (empty($location_id) || empty($floor) || empty($spot_label) || empty($arrival_time)) {
         echo json_encode(['error' => 'Missing booking details.']);
@@ -79,13 +83,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     }
 
     if (empty($plate_number)) {
-        $stmt = $pdo->prepare("SELECT plate_number FROM users WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT plate_number, default_vehicle_category FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $user_row = $stmt->fetch();
         $plate_number = $user_row['plate_number'] ?? '';
+        $vehicle_category = $user_row['default_vehicle_category'] ?? '4wheels (Sedan)';
+    } else {
+        $stmt = $pdo->prepare("SELECT plate_number, default_vehicle_category FROM users WHERE id = ?");
+        $stmt->execute([$user_id]);
+        $user_row = $stmt->fetch();
+
+        if ($user_row && strtoupper($user_row['plate_number']) === $plate_number) {
+            $vehicle_category = $user_row['default_vehicle_category'] ?? '4wheels (Sedan)';
+        } else {
+            $stmt = $pdo->prepare("SELECT category FROM user_vehicles WHERE user_id = ? AND UPPER(plate_number) = UPPER(?)");
+            $stmt->execute([$user_id, $plate_number]);
+            $vehicle_category = $stmt->fetchColumn();
+            if (!$vehicle_category) {
+                echo json_encode(['error' => 'Please choose one of your registered vehicles for this booking.']);
+                exit;
+            }
+        }
     }
 
-    // Backend price verification
     if ($is_overnight) {
         $parts = explode(':', $arrival_time);
         $hours = intval($parts[0] ?? 0);
@@ -96,8 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
         $arrival_ts = strtotime($current_date . ' ' . $arrival_time);
         $departure_ts = $arrival_ts + ($duration * 3600);
 
-        // 7:00 AM next morning
-        $next_7am_ts = strtotime($current_date . ' 07:00:00') + 86400; // +1 day
+        $next_7am_ts = strtotime($current_date . ' 07:00:00') + 86400;
 
         $extra_cost = 0;
         if ($departure_ts > $next_7am_ts) {
@@ -120,7 +139,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     $query_end = date('H:i:s', $query_end_ts);
 
     try {
-        // Double booking prevention check
         $stmt = $pdo->prepare("
             SELECT id 
             FROM bookings 
@@ -137,8 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
             exit;
         }
 
-        // Generate receipt
-        try {
+                try {
             $randomCode = strtoupper(bin2hex(random_bytes(3)));
         } catch (Exception $exception) {
             $randomCode = strtoupper(substr(uniqid('', true), -6));
@@ -146,10 +163,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
         $receipt_number = 'SK-' . date('Ymd') . '-' . $randomCode;
         $issued_at = date('M d, Y h:i A');
 
-        // Insert booking
-        $stmt = $pdo->prepare("
-            INSERT INTO bookings (user_id, booking_date, receipt_number, location_id, location_name, floor, spot_label, spot_type, arrival_time, duration_hours, hourly_rate, payment_method, total_amount, is_overnight, plate_number) 
-            VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                $stmt = $pdo->prepare("
+            INSERT INTO bookings (user_id, booking_date, receipt_number, location_id, location_name, floor, spot_label, spot_type, arrival_time, duration_hours, hourly_rate, payment_method, payment_status, total_amount, is_overnight, plate_number, vehicle_category) 
+            VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $user_id,
@@ -163,16 +179,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
             $duration,
             $hourly_rate,
             $payment_method,
+            $payment_status,
             $total_amount,
             $is_overnight ? 1 : 0,
-            $plate_number
+            $plate_number,
+            $vehicle_category
         ]);
 
         echo json_encode([
             'receipt_number' => $receipt_number,
             'issued_at' => $issued_at,
             'payment_method' => $payment_method,
-            'plate_number' => $plate_number
+            'plate_number' => $plate_number,
+            'vehicle_category' => $vehicle_category
         ]);
     } catch (Exception $e) {
         echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
@@ -180,7 +199,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'confi
     exit;
 }
 
-// 3. Handle AJAX Action to Cancel Booking
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_booking') {
     header('Content-Type: application/json');
     $user_id = $_SESSION['user_id'] ?? null;
@@ -206,7 +224,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
     exit;
 }
 
-// 4. Fetch user details & vehicles
 $user_id = $_SESSION['user_id'];
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
@@ -226,19 +243,20 @@ if ($user) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="style.css">
     <title>Book Parking | Siksik</title>
-    <script src="script.js" defer></script>
+    <script src="script.js?v=20260710-message" defer></script>
 </head>
 <body>
     <section class="booking-page-section">
         <div class="main-page-header-container booking-page-header">
             <div class="logo-system-name-container">
-                <img src="images/logo.svg" class="logo-icon" alt="Siksik logo">
+                <img src="images/logo.png" class="logo-icon" alt="Siksik logo">
                 <span class="system-name">Siksik</span>
             </div>
 
             <div class="nav-bar-container">
                 <a class="nav-bar-btn" href="index.php#home">Home</a>
                 <a class="nav-bar-btn active-nav-btn" href="book.php">Book Parking</a>
+                <a class="nav-bar-btn" href="profile.php">Profile</a>
                 <a class="nav-bar-btn" href="index.php#pricing">Pricing</a>
                 <a class="nav-bar-btn" href="index.php#about-us">About Us</a>
                 <a class="nav-bar-btn" href="index.php#contact">Contact</a>
@@ -247,6 +265,9 @@ if ($user) {
             <div class="sign-in-container" style="gap: 12px;">
                 <a class="SignIn-btn" href="dashboard.php" style="background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #8d8b8b;">
                     Dashboard
+                </a>
+                <a class="SignIn-btn" href="profile.php" style="background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #8d8b8b;">
+                    Profile
                 </a>
                 <a class="SignIn-btn" href="index.php">
                     Home
@@ -405,16 +426,16 @@ if ($user) {
                         <div><span>Hourly Rate</span><strong data-summary="rate">--</strong></div>
                         <div>
                             <span>Vehicle to Use</span>
-                            <?php if (!empty($user_vehicles)): ?>
-                                <select class="summary-input" id="booking-vehicle" style="cursor: pointer;">
-                                    <option value="<?php echo htmlspecialchars($user['plate_number']); ?>"><?php echo htmlspecialchars($user['plate_number']); ?> (Default)</option>
-                                    <?php foreach ($user_vehicles as $v): ?>
-                                        <option value="<?php echo htmlspecialchars($v['plate_number']); ?>"><?php echo htmlspecialchars($v['plate_number']); ?> (<?php echo htmlspecialchars($v['category']); ?>)</option>
-                                    <?php endforeach; ?>
-                                </select>
-                            <?php else: ?>
-                                <strong id="booking-vehicle-label" data-vehicle-plate="<?php echo htmlspecialchars($user['plate_number'] ?? ''); ?>"><?php echo htmlspecialchars($user['plate_number'] ?? '--'); ?></strong>
-                            <?php endif; ?>
+                            <select class="summary-input" id="booking-vehicle" style="cursor: pointer;">
+                                <option value="<?php echo htmlspecialchars($user['plate_number']); ?>" data-category="<?php echo htmlspecialchars($user['default_vehicle_category'] ?? '4wheels (Sedan)'); ?>">
+                                    <?php echo htmlspecialchars($user['plate_number']); ?> (Default - <?php echo htmlspecialchars($user['default_vehicle_category'] ?? '4wheels (Sedan)'); ?>)
+                                </option>
+                                <?php foreach ($user_vehicles as $v): ?>
+                                    <option value="<?php echo htmlspecialchars($v['plate_number']); ?>" data-category="<?php echo htmlspecialchars($v['category']); ?>">
+                                        <?php echo htmlspecialchars($v['plate_number']); ?> (<?php echo htmlspecialchars($v['category']); ?>)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div><span>Arrival Time</span><input class="summary-input" type="time" value="09:00" data-arrival-time></div>
                         <div><span>Duration</span><select class="summary-input" data-duration>
@@ -465,6 +486,7 @@ if ($user) {
                                 <div><span>Arrival</span><strong data-receipt-field="arrival">--</strong></div>
                                 <div><span>Duration</span><strong data-receipt-field="duration">--</strong></div>
                                 <div><span>Vehicle Plate</span><strong data-receipt-field="plate">--</strong></div>
+                                <div><span>Vehicle Type</span><strong data-receipt-field="vehicle-category">--</strong></div>
                                 <div><span>Overnight Parking</span><strong data-receipt-field="overnight">--</strong></div>
                                 <div><span>Payment Method</span><strong data-receipt-field="payment" style="text-transform: uppercase;">--</strong></div>
                                 <div><span>Total</span><strong data-receipt-field="total">--</strong></div>
@@ -480,8 +502,7 @@ if ($user) {
                 </aside>
             </div>
 
-            <!-- Booking History Section -->
-            <div class="booking-history-wrapper" style="margin-top: 48px;">
+                <div class="booking-history-wrapper" style="margin-top: 48px;">
                 <div class="booking-panel-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <span class="booking-panel-label">DASHBOARD</span>
@@ -493,12 +514,10 @@ if ($user) {
                     </div>
                 </div>
                 <div class="booking-history-container" id="booking-history-list">
-                    <!-- History cards will be loaded here via AJAX -->
                 </div>
             </div>
         </main>
 
-        <!-- Checkout / Payment Modal -->
         <div class="checkout-modal-backdrop" id="checkout-modal" style="display: none;">
             <div class="checkout-modal-card">
                 <div class="checkout-modal-header">
@@ -538,13 +557,15 @@ if ($user) {
                                     <input type="radio" name="payment_method_sel" value="card" style="accent-color: #00d4a8;">
                                     <span>Debit/Credit Card</span>
                                 </label>
+                                <label class="payment-option-label" style="display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 12px; background: rgba(8, 8, 8, 0.48); cursor: pointer; color: #8d8b8b; font-size: 13px; grid-column: 1 / -1;">
+                                    <input type="radio" name="payment_method_sel" value="cash" style="accent-color: #00d4a8;">
+                                    <span>Cash</span>
+                                </label>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Payment details panels -->
                     <div style="border-left: 1px solid rgba(255, 255, 255, 0.08); padding-left: 20px; display: flex; flex-direction: column; justify-content: center; min-height: 200px;">
-                        <!-- GCash/Maya Screen -->
                         <div class="payment-screen" id="screen-qr">
                             <p style="font-size: 12px; color: #8d8b8b; margin: 0 0 12px 0; text-align: center;">Scan QR to pay securely via GCash or Maya app.</p>
                             <div style="display: flex; justify-content: center; background: white; padding: 12px; border-radius: 8px; width: fit-content; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
@@ -553,14 +574,12 @@ if ($user) {
                             <p style="font-size: 10px; color: #555; text-align: center; margin: 8px 0 0 0; text-transform: uppercase; font-family: monospace;">Scanable mockup payment code</p>
                         </div>
 
-                        <!-- PayPal Screen -->
                         <div class="payment-screen" id="screen-paypal" style="display: none; flex-direction: column; gap: 10px;">
                             <p style="font-size: 12px; color: #8d8b8b; margin: 0 0 6px 0;">Log in with your PayPal account credentials.</p>
                             <input class="email-input-bar" type="email" placeholder="PayPal Email Address" style="padding: 12px 10px;">
                             <input class="email-input-bar" type="password" placeholder="Password" style="padding: 12px 10px;">
                         </div>
 
-                        <!-- Card Screen -->
                         <div class="payment-screen" id="screen-card" style="display: none; flex-direction: column; gap: 10px;">
                             <p style="font-size: 12px; color: #8d8b8b; margin: 0 0 6px 0;">Enter your credit/debit card credentials.</p>
                             <input class="email-input-bar" type="text" placeholder="Cardholder Name" style="padding: 12px 10px;">
@@ -571,10 +590,17 @@ if ($user) {
                             </div>
                         </div>
 
-                        <!-- Processing Screen -->
+                        <div class="payment-screen" id="screen-cash" style="display: none; flex-direction: column; gap: 10px;">
+                            <h3 style="color: #00d4a8; font-size: 14px; margin: 0; font-family: monospace; text-transform: uppercase;">Pay Cash on Arrival</h3>
+                            <p style="font-size: 12px; color: #e2e6ed; margin: 0; line-height: 1.5;">Your spot will be reserved now. Pay the total amount at the parking cashier or attendant when you arrive.</p>
+                            <div style="border: 1px dashed rgba(0, 212, 168, 0.35); border-radius: 8px; padding: 12px; background: rgba(0, 212, 168, 0.06); color: #8d8b8b; font-size: 12px; line-height: 1.5;">
+                                Prepare the exact amount if possible and present your ticket QR code at entry.
+                            </div>
+                        </div>
+
                         <div class="payment-screen" id="screen-processing" style="display: none; text-align: center;">
                             <div style="width: 40px; height: 40px; border: 3px solid rgba(0,212,168,0.1); border-top-color: #00d4a8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
-                            <p style="color: #00d4a8; margin: 15px 0 0 0; font-weight: bold; font-family: monospace; font-size: 13px;">Processing Transaction...</p>
+                            <p id="payment-processing-text" style="color: #00d4a8; margin: 15px 0 0 0; font-weight: bold; font-family: monospace; font-size: 13px;">Processing Transaction...</p>
                         </div>
                     </div>
                 </div>
@@ -586,7 +612,6 @@ if ($user) {
             </div>
         </div>
 
-        <!-- Payment Success / Grace Period Alert Modal -->
         <div class="checkout-modal-backdrop" id="success-alert-modal" style="display: none; z-index: 1100;">
             <div class="checkout-modal-card" style="width: min(480px, 100%); text-align: center; gap: 16px;">
                 <div style="background: rgba(0, 212, 168, 0.1); border: 2px solid #00d4a8; border-radius: 50%; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
@@ -594,20 +619,20 @@ if ($user) {
                         <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
                 </div>
-                <h2 class="booking-panel-title" style="margin: 0; font-size: 22px; font-family: system-ui, sans-serif; text-align: center;">Payment Successful!</h2>
+                <h2 class="booking-panel-title" id="success-alert-title" style="margin: 0; font-size: 22px; font-family: system-ui, sans-serif; text-align: center;">Payment Successful!</h2>
                 
                 <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 16px 0; font-size: 13px; color: #8d8b8b; text-align: left; line-height: 1.6; display: flex; flex-direction: column; gap: 12px;">
-                    <div style="display: flex; gap: 10px; align-items: flex-start;">
-                        <span style="font-size: 16px;">📱</span>
-                        <p style="margin: 0; color: #e2e6ed;">Please **prepare your QR code** (shown on the ticket) to scan or present to the parking attendant upon arrival.</p>
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <span style="min-width: 58px; color: #00d4a8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Ticket</span>
+                        <p style="margin: 0; color: #e2e6ed;">Prepare your <strong>QR code</strong> from the ticket and present it to the parking attendant when you arrive.</p>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: flex-start; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 12px;">
-                        <span style="font-size: 16px;">⚠️</span>
-                        <p style="margin: 0; color: #ff9f43;"><strong style="color: #ffb066;">30-Minute Grace Period:</strong> You must arrive within **30 minutes** of your scheduled arrival time. Failure to do so will result in your reservation being marked as **Void**.</p>
+                    <div style="display: flex; gap: 12px; align-items: flex-start; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 12px;">
+                        <span style="min-width: 58px; color: #ffb066; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Grace</span>
+                        <p style="margin: 0; color: #ff9f43;"><strong style="color: #ffb066;">30-minute grace period:</strong> Arrive within <strong>30 minutes</strong> of your scheduled time. Late arrivals will be marked as <strong>void</strong>.</p>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: flex-start;">
-                        <span style="font-size: 16px;">💸</span>
-                        <p style="margin: 0; color: #8d8b8b;">Voided spots will be released to the public, and a **50% refund** will be issued back to your payment method.</p>
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <span style="min-width: 58px; color: #8d8b8b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Refund</span>
+                        <p id="success-refund-copy" style="margin: 0; color: #8d8b8b;">Voided spots will be released to the public, and a <strong>50% refund</strong> will be issued to your payment method.</p>
                     </div>
                 </div>
                 

@@ -27,6 +27,9 @@ document.addEventListener('submit', async function (e) {
         try {
             const response = await fetch('main.php', {
                 method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: formData
             });
 
@@ -72,6 +75,7 @@ function createAcc() {
 
         <div class="login-container create-account-container">
             <form class="form-container create-account-form" method="post">
+                <input type="hidden" name="action" value="sign_up">
                 <div class="name-input-container">
                     <div class="input-group">
                         <span class="login-email-text">FIRST NAME</span>
@@ -89,7 +93,7 @@ function createAcc() {
                     <input class="email-input-bar" type="tel" name="phone_number" maxlength="11" placeholder="09XXXXXXXXX" required>
 
                     <span class="login-email-text">PLATE NUMBER</span>
-                    <input class="email-input-bar" type="text" name="plate_number" maxlength="7" placeholder="ABC 1234" required>
+                    <input class="email-input-bar" type="text" name="plate_number" maxlength="15" placeholder="ABC 1234" required>
 
                     <span class="login-email-text">EMAIL</span>
                     <input class="email-input-bar" type="email" name="email" placeholder="you@example.com" required>
@@ -121,6 +125,7 @@ function signIn() {
 
         <div class="login-container">
             <form class="form-container" method="post">
+                <input type="hidden" name="action" value="sign_in">
                 <div class="email-pass-container">
                     <span class="login-email-text">EMAIL</span>
                     <input class="email-input-bar" type="email" name="email" placeholder="you@example.com" required>
@@ -345,6 +350,7 @@ document.addEventListener('DOMContentLoaded', function () {
         arrival: document.querySelector('[data-receipt-field="arrival"]'),
         duration: document.querySelector('[data-receipt-field="duration"]'),
         plate: document.querySelector('[data-receipt-field="plate"]'),
+        vehicleCategory: document.querySelector('[data-receipt-field="vehicle-category"]'),
         overnight: document.querySelector('[data-receipt-field="overnight"]'),
         payment: document.querySelector('[data-receipt-field="payment"]'),
         total: document.querySelector('[data-receipt-field="total"]')
@@ -367,6 +373,18 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentStep = 1;
     let highestStep = 1;
     let activeReceipt = null;
+
+    function formatPaymentMethod(method) {
+        const labels = {
+            gcash: 'GCash',
+            maya: 'Maya',
+            paypal: 'PayPal',
+            card: 'Debit/Credit Card',
+            cash: 'Cash'
+        };
+
+        return labels[String(method || '').toLowerCase()] || method || 'GCash';
+    }
 
     let occupiedSpotsFromDb = [];
 
@@ -470,12 +488,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             <strong>${b.duration_hours} ${b.duration_hours > 1 ? 'hours' : 'hour'}</strong>
                         </div>
                         <div>
-                            <span>Vehicle Plate</span>
-                            <strong>${b.plate_number || 'Default'}</strong>
+                            <span>Vehicle</span>
+                            <strong>${b.plate_number || 'Default'}${b.vehicle_category ? ' (' + b.vehicle_category + ')' : ''}</strong>
                         </div>
                         <div>
                             <span>Payment Method</span>
-                            <strong style="text-transform: uppercase;">${b.payment_method}</strong>
+                            <strong>${formatPaymentMethod(b.payment_method)}</strong>
                         </div>
                         <div>
                             <span>Total Paid</span>
@@ -579,12 +597,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const endpoint = receiptEndpoint ? receiptEndpoint.getAttribute('data-receipt-endpoint') : 'book.php';
 
         const vehicleSelect = document.getElementById('booking-vehicle');
-        const vehicleLabel = document.getElementById('booking-vehicle-label');
         let chosenPlate = '';
+        let chosenVehicleCategory = '';
         if (vehicleSelect) {
             chosenPlate = vehicleSelect.value;
-        } else if (vehicleLabel) {
-            chosenPlate = vehicleLabel.getAttribute('data-vehicle-plate') || '';
+            chosenVehicleCategory = vehicleSelect.options[vehicleSelect.selectedIndex]?.dataset.category || '';
         }
 
         const params = new URLSearchParams();
@@ -601,6 +618,7 @@ document.addEventListener('DOMContentLoaded', function () {
         params.append('total_amount', getBookingTotal());
         params.append('is_overnight', overnightCheckbox && overnightCheckbox.checked ? 'true' : 'false');
         params.append('plate_number', chosenPlate);
+        params.append('vehicle_category', chosenVehicleCategory);
 
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -642,9 +660,10 @@ document.addEventListener('DOMContentLoaded', function () {
             arrival: formatArrivalTime(arrivalInput.value),
             duration: getDurationLabel(),
             plate: receiptDetails.plate_number || '',
+            vehicleCategory: receiptDetails.vehicle_category || '',
             overnight: isOvernight ? 'Yes' : 'No',
             rate: isOvernight ? (parseInt(arrivalInput.value.split(':')[0]) >= 12 ? 'PHP 120 (PM)' : 'PHP 145 (AM)') : 'PHP 50 (First 4h) + PHP 15/hr',
-            payment: receiptDetails.payment_method || 'GCash',
+            payment: formatPaymentMethod(receiptDetails.payment_method),
             total: formatCurrency(total)
         };
 
@@ -656,6 +675,7 @@ document.addEventListener('DOMContentLoaded', function () {
         receiptFields.arrival.textContent = activeReceipt.arrival;
         receiptFields.duration.textContent = activeReceipt.duration;
         if (receiptFields.plate) receiptFields.plate.textContent = activeReceipt.plate;
+        if (receiptFields.vehicleCategory) receiptFields.vehicleCategory.textContent = activeReceipt.vehicleCategory || '--';
         if (receiptFields.overnight) receiptFields.overnight.textContent = activeReceipt.overnight;
         if (receiptFields.payment) receiptFields.payment.textContent = activeReceipt.payment;
         receiptFields.total.textContent = activeReceipt.total;
@@ -685,6 +705,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'Arrival: ' + activeReceipt.arrival,
             'Duration: ' + activeReceipt.duration,
             'Vehicle Plate: ' + activeReceipt.plate,
+            'Vehicle Type: ' + activeReceipt.vehicleCategory,
             'Overnight Parking: ' + activeReceipt.overnight,
             'Rate Model: ' + activeReceipt.rate,
             'Payment Method: ' + activeReceipt.payment.toUpperCase(),
@@ -942,12 +963,16 @@ document.addEventListener('DOMContentLoaded', function () {
             qr: document.getElementById('screen-qr'),
             paypal: document.getElementById('screen-paypal'),
             card: document.getElementById('screen-card'),
+            cash: document.getElementById('screen-cash'),
             processing: document.getElementById('screen-processing')
         };
 
         Object.values(screens).forEach(s => { if (s) s.style.display = 'none'; });
 
-        if (paySubmitBtn) paySubmitBtn.disabled = false;
+        if (paySubmitBtn) {
+            paySubmitBtn.disabled = false;
+            paySubmitBtn.textContent = method === 'cash' ? 'Confirm Reservation' : 'Complete Payment';
+        }
 
         if (method === 'gcash' || method === 'maya') {
             if (screens.qr) screens.qr.style.display = 'block';
@@ -957,6 +982,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (screens.paypal) screens.paypal.style.display = 'flex';
         } else if (method === 'card') {
             if (screens.card) screens.card.style.display = 'flex';
+        } else if (method === 'cash') {
+            if (screens.cash) screens.cash.style.display = 'flex';
         }
     }
 
@@ -1028,15 +1055,19 @@ document.addEventListener('DOMContentLoaded', function () {
             const qrScreen = document.getElementById('screen-qr');
             const paypalScreen = document.getElementById('screen-paypal');
             const cardScreen = document.getElementById('screen-card');
+            const cashScreen = document.getElementById('screen-cash');
             const processingScreen = document.getElementById('screen-processing');
+            const processingText = document.getElementById('payment-processing-text');
 
             if (qrScreen) qrScreen.style.display = 'none';
             if (paypalScreen) paypalScreen.style.display = 'none';
             if (cardScreen) cardScreen.style.display = 'none';
+            if (cashScreen) cashScreen.style.display = 'none';
             if (processingScreen) processingScreen.style.display = 'block';
+            if (processingText) processingText.textContent = selectedMethod === 'cash' ? 'Confirming Reservation...' : 'Processing Transaction...';
 
             paySubmitBtn.disabled = true;
-            paySubmitBtn.textContent = 'Verifying...';
+            paySubmitBtn.textContent = selectedMethod === 'cash' ? 'Confirming...' : 'Verifying...';
 
             // Simulate processing latency
             setTimeout(async function () {
@@ -1047,6 +1078,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     const successModal = document.getElementById('success-alert-modal');
                     if (successModal) {
+                        const successTitle = document.getElementById('success-alert-title');
+                        const refundCopy = document.getElementById('success-refund-copy');
+                        if (successTitle) {
+                            successTitle.textContent = selectedMethod === 'cash' ? 'Reservation Confirmed!' : 'Payment Successful!';
+                        }
+                        if (refundCopy) {
+                            refundCopy.innerHTML = selectedMethod === 'cash'
+                                ? 'Voided spots will be released to the public. No refund is needed for cash reservations until payment is collected on arrival.'
+                                : 'Voided spots will be released to the public, and a <strong>50% refund</strong> will be issued to your payment method.';
+                        }
                         successModal.style.display = 'flex';
                     }
 
@@ -1130,4 +1171,251 @@ document.addEventListener('DOMContentLoaded', function () {
     renderLocations();
     setCurrentStep(1);
     updateSummary();
+});
+
+// ==========================================
+// COOKIE CONSENT SYSTEM
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', function () {
+    // Cookie Helper Functions
+    function setCookie(name, value, days) {
+        let expires = "";
+        if (days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            expires = "; expires=" + date.toUTCString();
+        }
+        document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax; Secure";
+    }
+
+    function getCookie(name) {
+        const nameEQ = name + "=";
+        const ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+        }
+        return null;
+    }
+
+    // Inject Cookie Banner HTML
+    function injectCookieBanner() {
+        if (document.getElementById('siksik-cookie-banner')) return;
+
+        const bannerHtml = `
+            <div id="siksik-cookie-banner" class="cookie-banner-container cookie-banner-hidden">
+                <div class="cookie-banner-content">
+                    <div class="cookie-banner-header">
+                        <div class="cookie-title-group">
+                            <svg class="cookie-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="#00d4a8" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-1.5 5a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 10.5 7zm-3 5a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 7.5 12zm2.5 5a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 10 17zm5.5 0a1.5 1.5 0 1 1-1.5-1.5 1.5 1.5 0 0 1 1.5 1.5zm.5-4.5a1.5 1.5 0 1 1-1.5-1.5 1.5 1.5 0 0 1 1.5 1.5zm-1.5-4a1.5 1.5 0 1 1 1.5 1.5 1.5 0 0 1-1.5-1.5zm3.5 2.5a.5.5 0 1 1-.5-.5.5.5 0 0 1 .5.5z"/>
+                            </svg>
+                            <h3>Cookie Preferences</h3>
+                        </div>
+                        <button class="cookie-close-btn" id="siksik-cookie-close">&times;</button>
+                    </div>
+                    
+                    <div class="cookie-banner-body" id="siksik-cookie-main-view">
+                        <p>We use cookies to improve your experience, analyze site usage, and support our marketing efforts. By clicking "Accept All", you agree to our use of all cookies. You can customize your preferences by clicking "Customize" or reject all non-essential cookies by clicking "Reject All".</p>
+                        <div class="cookie-banner-actions">
+                            <button class="cookie-btn cookie-btn-secondary" id="siksik-cookie-reject">Reject All</button>
+                            <button class="cookie-btn cookie-btn-link" id="siksik-cookie-customize-btn">Customize</button>
+                            <button class="cookie-btn cookie-btn-primary" id="siksik-cookie-accept">Accept All</button>
+                        </div>
+                    </div>
+                    
+                    <div class="cookie-banner-body cookie-banner-hidden" id="siksik-cookie-settings-view">
+                        <p class="settings-intro">Select which cookies you want to allow. Necessary cookies are required for the website to function.</p>
+                        
+                        <div class="cookie-option-list">
+                            <div class="cookie-option-item">
+                                <div class="cookie-option-info">
+                                    <span class="cookie-option-title">Necessary Cookies <span class="badge-required">Required</span></span>
+                                    <span class="cookie-option-desc">These cookies are essential for you to browse the website and use its features, such as secure booking and account login.</span>
+                                </div>
+                                <label class="cookie-switch">
+                                    <input type="checkbox" checked disabled>
+                                    <span class="cookie-slider"></span>
+                                </label>
+                            </div>
+                            
+                            <div class="cookie-option-item">
+                                <div class="cookie-option-info">
+                                    <span class="cookie-option-title">Preference Cookies</span>
+                                    <span class="cookie-option-desc">These cookies allow us to remember choices you make (such as your preferred parking locations or UI settings).</span>
+                                </div>
+                                <label class="cookie-switch">
+                                    <input type="checkbox" id="siksik-cookie-pref-chk">
+                                    <span class="cookie-slider"></span>
+                                </label>
+                            </div>
+                            
+                            <div class="cookie-option-item">
+                                <div class="cookie-option-info">
+                                    <span class="cookie-option-title">Analytics Cookies</span>
+                                    <span class="cookie-option-desc">These cookies help us understand how visitors interact with our website, allowing us to measure and improve performance.</span>
+                                </div>
+                                <label class="cookie-switch">
+                                    <input type="checkbox" id="siksik-cookie-analytic-chk">
+                                    <span class="cookie-slider"></span>
+                                </label>
+                            </div>
+                            
+                            <div class="cookie-option-item">
+                                <div class="cookie-option-info">
+                                    <span class="cookie-option-title">Marketing Cookies</span>
+                                    <span class="cookie-option-desc">These cookies are used to track visitor behavior across websites to display relevant, engaging ads.</span>
+                                </div>
+                                <label class="cookie-switch">
+                                    <input type="checkbox" id="siksik-cookie-marketing-chk">
+                                    <span class="cookie-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="cookie-banner-actions">
+                            <button class="cookie-btn cookie-btn-link" id="siksik-cookie-back-btn">Go Back</button>
+                            <button class="cookie-btn cookie-btn-primary" id="siksik-cookie-save">Save Choices</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="siksik-cookie-trigger-btn" class="cookie-trigger-fab" title="Cookie Preferences">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#00d4a8" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-1.5 5a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 10.5 7zm-3 5a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 7.5 12zm2.5 5a1.5 1.5 0 1 1-1.5 1.5A1.5 1.5 0 0 1 10 17zm5.5 0a1.5 1.5 0 1 1-1.5-1.5 1.5 1.5 0 0 1 1.5 1.5zm.5-4.5a1.5 1.5 0 1 1-1.5-1.5 1.5 1.5 0 0 1 1.5 1.5zm-1.5-4a1.5 1.5 0 1 1 1.5 1.5 1.5 0 0 1-1.5-1.5zm3.5 2.5a.5.5 0 1 1-.5-.5.5.5 0 0 1 .5.5z"/>
+                </svg>
+            </button>
+        `;
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = bannerHtml.trim();
+        while (wrapper.firstChild) {
+            document.body.appendChild(wrapper.firstChild);
+        }
+
+        setupEventListeners();
+    }
+
+    function setupEventListeners() {
+        const banner = document.getElementById('siksik-cookie-banner');
+        const mainView = document.getElementById('siksik-cookie-main-view');
+        const settingsView = document.getElementById('siksik-cookie-settings-view');
+        const triggerBtn = document.getElementById('siksik-cookie-trigger-btn');
+
+        const closeBtn = document.getElementById('siksik-cookie-close');
+        const acceptBtn = document.getElementById('siksik-cookie-accept');
+        const rejectBtn = document.getElementById('siksik-cookie-reject');
+        const customizeBtn = document.getElementById('siksik-cookie-customize-btn');
+        const backBtn = document.getElementById('siksik-cookie-back-btn');
+        const saveBtn = document.getElementById('siksik-cookie-save');
+
+        const prefChk = document.getElementById('siksik-cookie-pref-chk');
+        const analyticChk = document.getElementById('siksik-cookie-analytic-chk');
+        const marketingChk = document.getElementById('siksik-cookie-marketing-chk');
+
+        function loadSavedToggles() {
+            const savedPrefs = getCookie('siksik_cookie_preferences');
+            if (savedPrefs) {
+                try {
+                    const prefs = JSON.parse(savedPrefs);
+                    prefChk.checked = !!prefs.preferences;
+                    analyticChk.checked = !!prefs.analytics;
+                    marketingChk.checked = !!prefs.marketing;
+                } catch (e) {
+                    console.error("Failed to parse cookie preferences", e);
+                }
+            }
+        }
+
+        // Action Handlers
+        acceptBtn.addEventListener('click', function () {
+            const preferences = {
+                necessary: true,
+                preferences: true,
+                analytics: true,
+                marketing: true
+            };
+            setCookie('siksik_cookie_consent', 'accepted', 365);
+            setCookie('siksik_cookie_preferences', JSON.stringify(preferences), 365);
+            hideBanner();
+        });
+
+        rejectBtn.addEventListener('click', function () {
+            const preferences = {
+                necessary: true,
+                preferences: false,
+                analytics: false,
+                marketing: false
+            };
+            setCookie('siksik_cookie_consent', 'rejected', 365);
+            setCookie('siksik_cookie_preferences', JSON.stringify(preferences), 365);
+            hideBanner();
+        });
+
+        customizeBtn.addEventListener('click', function () {
+            loadSavedToggles();
+            mainView.classList.add('cookie-banner-hidden');
+            settingsView.classList.remove('cookie-banner-hidden');
+        });
+
+        backBtn.addEventListener('click', function () {
+            settingsView.classList.add('cookie-banner-hidden');
+            mainView.classList.remove('cookie-banner-hidden');
+        });
+
+        saveBtn.addEventListener('click', function () {
+            const preferences = {
+                necessary: true,
+                preferences: prefChk.checked,
+                analytics: analyticChk.checked,
+                marketing: marketingChk.checked
+            };
+            setCookie('siksik_cookie_consent', 'custom', 365);
+            setCookie('siksik_cookie_preferences', JSON.stringify(preferences), 365);
+            hideBanner();
+        });
+
+        closeBtn.addEventListener('click', function () {
+            hideBanner();
+        });
+
+        triggerBtn.addEventListener('click', function () {
+            showBanner();
+            loadSavedToggles();
+            if (getCookie('siksik_cookie_consent') === 'custom') {
+                mainView.classList.add('cookie-banner-hidden');
+                settingsView.classList.remove('cookie-banner-hidden');
+            } else {
+                settingsView.classList.add('cookie-banner-hidden');
+                mainView.classList.remove('cookie-banner-hidden');
+            }
+        });
+    }
+
+    function showBanner() {
+        const banner = document.getElementById('siksik-cookie-banner');
+        if (banner) {
+            banner.classList.remove('cookie-banner-hidden');
+            void banner.offsetWidth;
+            banner.classList.add('cookie-banner-visible');
+        }
+    }
+
+    function hideBanner() {
+        const banner = document.getElementById('siksik-cookie-banner');
+        if (banner) {
+            banner.classList.remove('cookie-banner-visible');
+            banner.classList.add('cookie-banner-hidden');
+        }
+    }
+
+    injectCookieBanner();
+
+    const consent = getCookie('siksik_cookie_consent');
+    if (!consent) {
+        setTimeout(showBanner, 800);
+    }
 });

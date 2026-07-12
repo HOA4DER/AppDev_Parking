@@ -9,7 +9,6 @@ if (empty($_SESSION['is_signed_in']) || empty($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
-// AJAX Vehicle Management Handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     $action = $_POST['action'];
@@ -41,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $success = $stmt->execute([$user_id, $plate, $category]);
         $vehicle_id = $pdo->lastInsertId();
 
-        // Self-manage multiple vehicles flag
         $stmt = $pdo->prepare("UPDATE users SET has_multiple_vehicles = 1 WHERE id = ?");
         $stmt->execute([$user_id]);
 
@@ -68,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $stmt = $pdo->prepare("DELETE FROM user_vehicles WHERE id = ? AND user_id = ?");
         $success = $stmt->execute([$id, $user_id]);
 
-        // Self-manage multiple vehicles flag
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM user_vehicles WHERE user_id = ?");
         $stmt->execute([$user_id]);
         $count = intval($stmt->fetchColumn());
@@ -86,7 +83,6 @@ $current_time = date('H:i:s');
 $current_date = date('Y-m-d');
 
 try {
-    // 1. Fetch user information
     $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
     $stmt->execute([$user_id]);
     $user = $stmt->fetch();
@@ -97,7 +93,6 @@ try {
         exit;
     }
 
-    // 2. Fetch all bookings for categorization
     $stmt = $pdo->prepare("SELECT * FROM bookings WHERE user_id = ? ORDER BY booking_date DESC, arrival_time DESC");
     $stmt->execute([$user_id]);
     $all_bookings = $stmt->fetchAll();
@@ -115,7 +110,6 @@ try {
             $booking_date = $booking['booking_date'];
             $arrival_time = $booking['arrival_time'];
             
-            // Grace period: 30 minutes (1800 seconds) after arrival
             $grace_end_ts = strtotime($arrival_time) + 1800;
             $grace_end_time = date('H:i:s', $grace_end_ts);
 
@@ -129,13 +123,12 @@ try {
             }
 
             if ($past_grace_period) {
-                // Classify past bookings: even IDs as Completed, odd IDs as Void
                 if (intval($booking['id']) % 2 === 0) {
                     $completed_bookings[] = $booking;
                     $total_spent += floatval($booking['total_amount']);
                 } else {
                     $void_bookings[] = $booking;
-                    $total_spent += (floatval($booking['total_amount']) * 0.5); // 50% refund returned
+                    $total_spent += (floatval($booking['total_amount']) * 0.5);
                 }
             } else {
                 $active_bookings[] = $booking;
@@ -166,187 +159,20 @@ function formatTime($timeStr) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="style.css">
     <title>User Dashboard | Siksik Parking</title>
-    <script src="script.js" defer></script>
-    <style>
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            gap: 24px;
-            margin-top: 28px;
-            align-items: start;
-        }
-        .profile-sidebar {
-            box-sizing: border-box;
-            padding: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            border-radius: 8px;
-            background: rgba(17, 19, 24, 0.82);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            color: white;
-        }
-        .profile-avatar {
-            width: 72px;
-            height: 72px;
-            border-radius: 50%;
-            background: rgba(0, 212, 168, 0.12);
-            border: 1px solid rgba(0, 212, 168, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            font-weight: bold;
-            color: #00d4a8;
-            margin: 0 auto;
-        }
-        .profile-info {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            padding-top: 16px;
-            font-size: 13px;
-        }
-        .profile-info div {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-        .profile-info span {
-            color: #555;
-            font-size: 10px;
-            text-transform: uppercase;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-        }
-        .profile-info strong {
-            color: #e2e6ed;
-            font-family: system-ui, sans-serif;
-        }
-        .dashboard-main {
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 16px;
-        }
-        .stat-card {
-            box-sizing: border-box;
-            padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 8px;
-            background: rgba(17, 19, 24, 0.6);
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .stat-val {
-            font-size: 28px;
-            font-weight: bold;
-            color: #00d4a8;
-            font-family: system-ui, sans-serif;
-        }
-        .stat-lbl {
-            font-size: 11px;
-            color: #8d8b8b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .tabs-header {
-            display: flex;
-            gap: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            padding-bottom: 8px;
-            margin-top: 12px;
-        }
-        .tab-btn {
-            background: transparent;
-            border: none;
-            color: #8d8b8b;
-            font-size: 14px;
-            font-weight: bold;
-            padding: 8px 16px;
-            cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.2s ease;
-        }
-        .tab-btn:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.05);
-        }
-        .tab-btn.active {
-            color: white;
-            background: rgba(0, 212, 168, 0.12);
-            border: 1px solid rgba(0, 212, 168, 0.2);
-        }
-        .tab-content-panel {
-            display: none;
-        }
-        .tab-content-panel.active {
-            display: block;
-        }
-        .empty-dashboard-state {
-            border: 1px dashed rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 48px;
-            text-align: center;
-            color: #8d8b8b;
-        }
-        
-        /* Modal Style for receipt view */
-        .receipt-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.85);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(10px);
-        }
-        .receipt-modal-card {
-            width: min(420px, calc(100% - 32px));
-            box-sizing: border-box;
-            background: #111318;
-            border: 1px solid rgba(255,255,255,0.16);
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        
-        @media (max-width: 900px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-            .stats-row {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-    </style>
+    <script src="script.js?v=20260710-auth" defer></script>
 </head>
 <body>
     <section class="booking-page-section">
         <div class="main-page-header-container booking-page-header">
             <div class="logo-system-name-container">
-                <img src="images/logo.svg" class="logo-icon" alt="Siksik logo">
+                <img src="images/logo.png" class="logo-icon" alt="Siksik logo">
                 <span class="system-name">Siksik</span>
             </div>
 
             <div class="nav-bar-container">
                 <a class="nav-bar-btn" href="index.php#home">Home</a>
                 <a class="nav-bar-btn" href="book.php">Book Parking</a>
+                <a class="nav-bar-btn" href="profile.php">Profile</a>
                 <a class="nav-bar-btn" href="index.php#pricing">Pricing</a>
                 <a class="nav-bar-btn" href="index.php#about-us">About Us</a>
                 <a class="nav-bar-btn" href="index.php#contact">Contact</a>
@@ -355,6 +181,9 @@ function formatTime($timeStr) {
             <div class="sign-in-container" style="gap: 12px;">
                 <a class="SignIn-btn" href="dashboard.php">
                     Dashboard
+                </a>
+                <a class="SignIn-btn" href="profile.php" style="background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #8d8b8b;">
+                    Profile
                 </a>
                 <a class="SignIn-btn" href="book.php" style="background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #8d8b8b;">
                     Book Now
@@ -398,7 +227,7 @@ function formatTime($timeStr) {
                         <div>
                             <span>Plate Number/s</span>
                             <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end; text-align: right;" id="sidebar-plates-list">
-                                <strong style="font-family: monospace; font-size: 13px; color: white;"><?php echo htmlspecialchars($user['plate_number']); ?> <span style="font-size: 9px; color: #00d4a8; font-weight: normal; border: 1px solid rgba(0,212,168,0.3); padding: 1px 4px; border-radius: 4px; margin-left: 2px;">DEFAULT</span></strong>
+                                <strong style="font-family: monospace; font-size: 13px; color: white;"><?php echo htmlspecialchars($user['plate_number']); ?> <span style="font-size: 9px; color: #8d8b8b; font-weight: normal; text-transform: uppercase;">(<?php echo htmlspecialchars($user['default_vehicle_category'] ?? '4wheels (Sedan)'); ?>)</span> <span style="font-size: 9px; color: #00d4a8; font-weight: normal; border: 1px solid rgba(0,212,168,0.3); padding: 1px 4px; border-radius: 4px; margin-left: 2px;">DEFAULT</span></strong>
                                 <?php
                                 $stmt_v = $pdo->prepare("SELECT * FROM user_vehicles WHERE user_id = ? ORDER BY id DESC");
                                 $stmt_v->execute([$user_id]);
@@ -415,7 +244,7 @@ function formatTime($timeStr) {
                         </div>
                     </div>
 
-                    <button id="manage-vehicles-btn" class="cancel-booking-btn" style="width: 100%; border-color: rgba(0, 212, 168, 0.3); background: rgba(0, 212, 168, 0.05); color: #00d4a8; margin-top: 16px; font-weight: 500; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Manage Vehicles</button>
+                    <a href="profile.php#vehicles" class="cancel-booking-btn" style="display: block; text-align: center; text-decoration: none; width: 100%; box-sizing: border-box; border-color: rgba(0, 212, 168, 0.3); background: rgba(0, 212, 168, 0.05); color: #00d4a8; margin-top: 16px; font-weight: 500; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Edit Profile and Vehicles</a>
                 </aside>
 
                 <section class="dashboard-main">
@@ -494,8 +323,8 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
-                                                <span>Vehicle Plate</span>
-                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                                <span>Vehicle</span>
+                                                <strong><?php echo htmlspecialchars(($b['plate_number'] ?? 'Default') . (!empty($b['vehicle_category']) ? ' (' . $b['vehicle_category'] . ')' : '')); ?></strong>
                                             </div>
                                             <div>
                                                 <span>Payment Method</span>
@@ -560,8 +389,8 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
-                                                <span>Vehicle Plate</span>
-                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                                <span>Vehicle</span>
+                                                <strong><?php echo htmlspecialchars(($b['plate_number'] ?? 'Default') . (!empty($b['vehicle_category']) ? ' (' . $b['vehicle_category'] . ')' : '')); ?></strong>
                                             </div>
                                             <div>
                                                 <span>Payment Method</span>
@@ -623,8 +452,8 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
-                                                <span>Vehicle Plate</span>
-                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                                <span>Vehicle</span>
+                                                <strong><?php echo htmlspecialchars(($b['plate_number'] ?? 'Default') . (!empty($b['vehicle_category']) ? ' (' . $b['vehicle_category'] . ')' : '')); ?></strong>
                                             </div>
                                             <div>
                                                 <span>Payment Method</span>
@@ -689,8 +518,8 @@ function formatTime($timeStr) {
                                                 <strong><?php echo $b['is_overnight'] ? 'Yes' : 'No'; ?></strong>
                                             </div>
                                             <div>
-                                                <span>Vehicle Plate</span>
-                                                <strong><?php echo htmlspecialchars($b['plate_number'] ?? 'Default'); ?></strong>
+                                                <span>Vehicle</span>
+                                                <strong><?php echo htmlspecialchars(($b['plate_number'] ?? 'Default') . (!empty($b['vehicle_category']) ? ' (' . $b['vehicle_category'] . ')' : '')); ?></strong>
                                             </div>
                                             <div>
                                                 <span>Payment Method</span>
@@ -730,6 +559,7 @@ function formatTime($timeStr) {
                 <div style="display: flex; justify-content: space-between;"><span>Time:</span><strong id="m-time" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Duration:</span><strong id="m-duration" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Vehicle Plate:</span><strong id="m-plate" style="color: white;">--</strong></div>
+                <div style="display: flex; justify-content: space-between;"><span>Vehicle Type:</span><strong id="m-vehicle-category" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Overnight Parking:</span><strong id="m-overnight" style="color: white;">--</strong></div>
                 <div style="display: flex; justify-content: space-between;"><span>Payment Method:</span><strong id="m-payment" style="color: white; text-transform: uppercase;">--</strong></div>
                 <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px; font-size: 14px;"><span style="color: #00d4a8;">Total Price:</span><strong id="m-total" style="color: #00d4a8; font-weight: bold;">--</strong></div>
@@ -808,6 +638,7 @@ function formatTime($timeStr) {
             document.getElementById('m-time').textContent = formattedTime;
             document.getElementById('m-duration').textContent = booking.duration_hours + (booking.duration_hours > 1 ? ' hours' : ' hour');
             document.getElementById('m-plate').textContent = booking.plate_number || 'Default';
+            document.getElementById('m-vehicle-category').textContent = booking.vehicle_category || '--';
             document.getElementById('m-overnight').textContent = Number(booking.is_overnight) === 1 ? 'Yes' : 'No';
             document.getElementById('m-payment').textContent = booking.payment_method;
             document.getElementById('m-total').textContent = 'PHP ' + Number(booking.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2});
@@ -848,6 +679,7 @@ function formatTime($timeStr) {
                 'Arrival: ' + formatJsTime(b.arrival_time),
                 'Duration: ' + b.duration_hours + ' hours',
                 'Vehicle Plate: ' + (b.plate_number || 'Default'),
+                'Vehicle Type: ' + (b.vehicle_category || '--'),
                 'Overnight Parking: ' + (Number(b.is_overnight) === 1 ? 'Yes' : 'No'),
                 'Payment Method: ' + b.payment_method.toUpperCase(),
                 'Total Price: PHP ' + Number(b.total_amount).toLocaleString('en-US'),

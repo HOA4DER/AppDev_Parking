@@ -28,7 +28,7 @@ try {
         `first_name` VARCHAR(50) NOT NULL,
         `last_name` VARCHAR(50) NOT NULL,
         `phone_number` VARCHAR(15) NOT NULL,
-        `plate_number` VARCHAR(10) NOT NULL,
+        `plate_number` VARCHAR(15) NOT NULL,
         `email` VARCHAR(100) NOT NULL UNIQUE,
         `password` VARCHAR(255) NOT NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -73,11 +73,25 @@ try {
         $pdo->exec("ALTER TABLE `bookings` ADD COLUMN `plate_number` VARCHAR(15) NULL AFTER `user_id`");
         $pdo->exec("UPDATE `bookings` b JOIN `users` u ON b.user_id = u.id SET b.plate_number = u.plate_number WHERE b.plate_number IS NULL");
     }
+    if (!in_array('vehicle_category', $columns)) {
+        $pdo->exec("ALTER TABLE `bookings` ADD COLUMN `vehicle_category` VARCHAR(50) NULL AFTER `plate_number`");
+        $pdo->exec("UPDATE `bookings` b JOIN `users` u ON b.user_id = u.id SET b.vehicle_category = COALESCE(u.default_vehicle_category, '4wheels (Sedan)') WHERE b.vehicle_category IS NULL");
+    }
 
     // 2. Users table migrations
     $user_cols = $pdo->query("DESCRIBE `users`")->fetchAll(PDO::FETCH_COLUMN);
     if (!in_array('has_multiple_vehicles', $user_cols)) {
         $pdo->exec("ALTER TABLE `users` ADD COLUMN `has_multiple_vehicles` TINYINT(1) DEFAULT 0 AFTER `plate_number`");
+    }
+    if (!in_array('default_vehicle_category', $user_cols)) {
+        $pdo->exec("ALTER TABLE `users` ADD COLUMN `default_vehicle_category` VARCHAR(50) DEFAULT '4wheels (Sedan)' AFTER `plate_number`");
+    }
+    $user_column_types = [];
+    foreach ($pdo->query("DESCRIBE `users`")->fetchAll(PDO::FETCH_ASSOC) as $column) {
+        $user_column_types[$column['Field']] = strtolower($column['Type']);
+    }
+    if (isset($user_column_types['plate_number']) && preg_match('/varchar\((\d+)\)/', $user_column_types['plate_number'], $matches) && intval($matches[1]) < 15) {
+        $pdo->exec("ALTER TABLE `users` MODIFY COLUMN `plate_number` VARCHAR(15) NOT NULL");
     }
 
     // 3. Create user_vehicles table

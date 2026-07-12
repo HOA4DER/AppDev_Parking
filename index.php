@@ -10,14 +10,14 @@ $isSignedIn = !empty($_SESSION['is_signed_in']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="style.css">
     <title>Siksik Parking System</title>
-    <script src="script.js" defer></script>
+    <script src="script.js?v=20260710-auth" defer></script>
 </head>
 <body>
     <section class="main-page-section">
         <section class="header-promotion-container" id="home" tabindex="-1">
             <div class="main-page-header-container">
                 <div class="logo-system-name-container">
-                    <img src="images/logo.svg" class="logo-icon" alt="Siksik logo">
+                    <img src="images/logo.png" class="logo-icon" alt="Siksik logo">
                     <span class="system-name">Siksik</span>
                 </div>
 
@@ -34,6 +34,9 @@ $isSignedIn = !empty($_SESSION['is_signed_in']);
                         Dashboard
                     </a>
                     <?php if ($isSignedIn): ?>
+                        <a class="SignIn-btn" href="profile.php" style="background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #8d8b8b;">
+                            Profile
+                        </a>
                         <a class="SignIn-btn" href="book.php">
                             Book Now
                             <img src="images/arrow-right.svg" class="side-icon" alt="">
@@ -216,7 +219,7 @@ $isSignedIn = !empty($_SESSION['is_signed_in']);
             <div class="footer-content-wrapper">
                 <div class="footer-brand-container" id="about-us" tabindex="-1">
                     <div class="footer-logo-container">
-                        <img src="images/logo.svg" class="footer-logo-mark" alt="Siksik logo">
+                        <img src="images/logo.png" class="logo-icon" alt="Siksik logo">
                         <span class="footer-system-name">Siksik</span>
                     </div>
                     <span class="footer-brand-text">

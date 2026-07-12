@@ -2,22 +2,47 @@
 session_start();
 require_once 'db.php';
 
-if (!empty($_SESSION['is_signed_in']) && !isset($_POST['action'])) {
+$authFlash = $_SESSION['auth_flash'] ?? null;
+unset($_SESSION['auth_flash']);
+
+function authRespond($success, $message, $redirect = 'main.php') {
+    $wantsJson = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
+
+    if ($wantsJson) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => $success, 'message' => $message]);
+        exit;
+    }
+
+    $_SESSION['auth_flash'] = [
+        'success' => $success,
+        'message' => $message
+    ];
+    header('Location: ' . $redirect);
+    exit;
+}
+
+if (!empty($_SESSION['is_signed_in']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: index.php');
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+    if ($action === '') {
+        if (isset($_POST['sign_in'])) {
+            $action = 'sign_in';
+        } elseif (isset($_POST['sign_up'])) {
+            $action = 'sign_up';
+        }
+    }
 
     if ($action === 'sign_in') {
-        header('Content-Type: application/json');
         $email = trim($_POST['email'] ?? '');
         $password = trim($_POST['password'] ?? '');
 
         if (empty($email) || empty($password)) {
-            echo json_encode(['success' => false, 'message' => 'Please enter both email and password.']);
-            exit;
+            authRespond(false, 'Please enter both email and password.');
         }
 
         try {
@@ -34,18 +59,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['phone_number'] = $user['phone_number'];
                 $_SESSION['plate_number'] = $user['plate_number'];
 
-                echo json_encode(['success' => true, 'message' => 'Login successful! Redirecting...']);
+                authRespond(true, 'Login successful! Redirecting...', 'index.php');
             } else {
-                echo json_encode(['success' => false, 'message' => 'Invalid email or password.']);
+                authRespond(false, 'Invalid email or password.');
             }
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+            authRespond(false, 'Database error: ' . $e->getMessage());
         }
-        exit;
     }
 
     if ($action === 'sign_up') {
-        header('Content-Type: application/json');
         $first_name = trim($_POST['first_name'] ?? '');
         $last_name = trim($_POST['last_name'] ?? '');
         $phone_number = trim($_POST['phone_number'] ?? '');
@@ -54,51 +77,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = trim($_POST['password'] ?? '');
 
         if (empty($first_name) || empty($last_name) || empty($phone_number) || empty($plate_number) || empty($email) || empty($password)) {
-            echo json_encode(['success' => false, 'message' => 'All fields are required.']);
-            exit;
+            authRespond(false, 'All fields are required.');
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo json_encode(['success' => false, 'message' => 'Invalid email format.']);
-            exit;
+            authRespond(false, 'Invalid email format.');
         }
 
         if (!preg_match('/^[0-9]{11}$/', $phone_number)) {
-            echo json_encode(['success' => false, 'message' => 'Phone number must be 11 digits (e.g. 09XXXXXXXXX).']);
-            exit;
+            authRespond(false, 'Phone number must be 11 digits (e.g. 09XXXXXXXXX).');
         }
 
         if (strlen($plate_number) < 4) {
-            echo json_encode(['success' => false, 'message' => 'Please enter a valid plate number.']);
-            exit;
+            authRespond(false, 'Please enter a valid plate number.');
         }
 
         try {
             $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
             $stmt->execute([$email]);
             if ($stmt->fetch()) {
-                echo json_encode(['success' => false, 'message' => 'Email is already registered.']);
-                exit;
+                authRespond(false, 'Email is already registered. Please sign in.');
             }
 
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, phone_number, plate_number, email, password) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->execute([$first_name, $last_name, $phone_number, $plate_number, $email, $hashedPassword]);
 
-            $userId = $pdo->lastInsertId();
-            $_SESSION['is_signed_in'] = true;
-            $_SESSION['user_id'] = $userId;
-            $_SESSION['email'] = $email;
-            $_SESSION['first_name'] = $first_name;
-            $_SESSION['last_name'] = $last_name;
-            $_SESSION['phone_number'] = $phone_number;
-            $_SESSION['plate_number'] = $plate_number;
+            $isAjaxRequest = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
+            if ($isAjaxRequest) {
+                $userId = $pdo->lastInsertId();
+                $_SESSION['is_signed_in'] = true;
+                $_SESSION['user_id'] = $userId;
+                $_SESSION['email'] = $email;
+                $_SESSION['first_name'] = $first_name;
+                $_SESSION['last_name'] = $last_name;
+                $_SESSION['phone_number'] = $phone_number;
+                $_SESSION['plate_number'] = $plate_number;
+            }
 
-            echo json_encode(['success' => true, 'message' => 'Account created successfully! Redirecting...']);
+            authRespond(true, $isAjaxRequest ? 'Account created successfully! Redirecting...' : 'Account created successfully. Please sign in.', $isAjaxRequest ? 'index.php' : 'main.php');
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Registration failed: ' . $e->getMessage()]);
+            authRespond(false, 'Registration failed: ' . $e->getMessage());
         }
-        exit;
     }
 }
 ?>
@@ -109,13 +129,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="style.css">
     <title>Parking System</title>
-    <script src="script.js" defer></script>
+    <script src="script.js?v=20260710-auth" defer></script>
 </head>
 <body>
     <section class="auth-page-section">
         <div class="main-page-header-container auth-page-header">
             <div class="logo-system-name-container">
-                <img src="images/logo.svg" class="logo-icon" alt="Siksik logo">
+                <img src="images/logo.png" class="logo-icon" alt="Siksik logo">
                 <span class="system-name">Siksik</span>
             </div>
 
@@ -174,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="learn-more-container">
                         <a class="learn-more-btn" href="index.php#about-us">
-                            <img src="images/logo.svg" class="learn-more-icon" alt="">
+                            <img src="images/logo.png" class="learn-more-icon" alt="">
                             <span class="learn-more-text">LEARN MORE ABOUT US</span>
                             <img src="images/arrow-right.svg" class="drop-down-icon" alt="">
                         </a>
@@ -209,6 +229,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="login-container">
                     <form class="form-container" method="post">
+                        <?php if ($authFlash): ?>
+                            <div class="auth-error-msg <?php echo $authFlash['success'] ? 'auth-success-msg' : ''; ?>">
+                                <?php echo htmlspecialchars($authFlash['message']); ?>
+                            </div>
+                        <?php endif; ?>
+                        <input type="hidden" name="action" value="sign_in">
                         <div class="email-pass-container">
                             <span class="login-email-text">EMAIL</span>
                             <input class="email-input-bar" type="email" name="email" placeholder="you@example.com">
