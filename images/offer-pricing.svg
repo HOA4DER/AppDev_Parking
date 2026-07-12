@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-label="Competitive pricing">
+  <path d="M13 34 34 13h22v22L35 56a8 8 0 0 1-11 0L13 45a8 8 0 0 1 0-11z" fill="#0f1518" stroke="#1f3d38" stroke-width="2"/>
+  <circle cx="49" cy="23" r="4" fill="#00d4a8"/>
+  <path d="M29 43h13M29 34h18" fill="none" stroke="#00d4a8" stroke-width="4" stroke-linecap="round"/>
+</svg>
